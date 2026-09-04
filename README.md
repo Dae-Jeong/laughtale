@@ -40,11 +40,14 @@ Laughtale에서는 그 아쉬움을 출발점으로 삼는다. 기능을 빨리 
 - 서비스 경계와 데이터 소유권은 어떻게 나눌 것인가?
 - React 애플리케이션의 정보 구조와 디자인 언어는 무엇인가?
 
-## Working reference
+## Things to explore
 
-프로젝트가 커지는 동안 처음의 목적과 점진적 확장 원칙을 놓치지 않기 위한 기준은
-[`docs/project-direction.md`](docs/project-direction.md)에 정리한다. 이 문서는 현재 합의한
-원칙, 앞으로의 계획, 아직 실험 단계인 기술을 구분하는 프로젝트 방향의 기준점이다.
+아래 항목은 처음부터 갖출 요구사항이 아니라, 제품의 필요에 따라 하나씩 경험해볼 주제다.
+
+- FastAPI, Spring Boot 등 서로 다른 기술을 사용하는 독립 backend service
+- 대용량 traffic, resource scaling, 장애 상황을 재현하는 test 환경
+- Database primary/replica, Elasticsearch, Kafka 등의 data infrastructure
+- 가정과 측정을 바탕으로 한 capacity planning과 월간 infrastructure cost 예측
 
 ## Principle
 
