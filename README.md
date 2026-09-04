@@ -30,24 +30,10 @@ Laughtale에서는 그 아쉬움을 출발점으로 삼는다. 기능을 빨리 
 - **Backend:** 처음부터 MSA를 완성된 구조로 선언하지 않는다. 제품이 커지며 독립성이 필요한 영역부터 서비스로 분리한다.
 - **Testing:** 제품의 성장에 맞춰 대용량 트래픽에서도 안정성을 검증할 수 있는 재현 가능한 테스트 환경을 점진적으로 구축한다.
 
-## Open questions
+## Status
 
-아래 결정은 의도적으로 보류한다. 제품의 첫 문제와 사용 흐름이 구체화된 뒤 정한다.
-
-- 첫 번째로 만들 제품 경험은 무엇인가?
-- Kubernetes 기반을 어느 수준까지 처음부터 갖출 것인가?
-- 개발·테스트·배포를 위한 하네스가 지금 필요한가, 아니면 제품이 생긴 뒤 도입할 것인가?
-- 서비스 경계와 데이터 소유권은 어떻게 나눌 것인가?
-- React 애플리케이션의 정보 구조와 디자인 언어는 무엇인가?
-
-## Things to explore
-
-아래 항목은 처음부터 갖출 요구사항이 아니라, 제품의 필요에 따라 하나씩 경험해볼 주제다.
-
-- FastAPI, Spring Boot 등 서로 다른 기술을 사용하는 독립 backend service
-- 대용량 traffic, resource scaling, 장애 상황을 재현하는 test 환경
-- Database primary/replica, Elasticsearch, Kafka 등의 data infrastructure
-- 가정과 측정을 바탕으로 한 capacity planning과 월간 infrastructure cost 예측
+현재는 프로젝트의 초기 구상 단계이며, 아직 실행 가능한 애플리케이션은 없다. 첫 제품 흐름과
+구현이 추가되면 이 문서에 필요한 환경, 실행 방법, 테스트 방법을 함께 기록한다.
 
 ## Principle
 
