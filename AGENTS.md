@@ -4,6 +4,7 @@
 2. Use [`README.md`](README.md) as the project context for product, architecture, and infrastructure work.
 3. Future ideas in the context below are reference only. Do not scaffold or install them until the admin asks.
 4. If work drifts from the stated purpose, give a brief reminder. The admin's explicit current decision takes precedence.
+5. Before implementing a significant feature or architecture decision, follow [`.agents/skills/spec-driven-development/SKILL.md`](.agents/skills/spec-driven-development/SKILL.md). Respect that Skill's declared exceptions for trivial, self-contained changes.
 
 ## Context to remember
 
