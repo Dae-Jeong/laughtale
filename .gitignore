@@ -1,0 +1,24 @@
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Tool caches
+.cache/
+.turbo/
+graphify-out/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Logs
+*.log
