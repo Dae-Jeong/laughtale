@@ -1,5 +1,9 @@
 # Laughtale
 
+<p align="center">
+  <img src="assets/laughtale-logo.png" alt="Laughtale logo" width="220">
+</p>
+
 > 실무에서 시간과 조건 때문에 아쉽게 남은 제품 경험을, 내 관점과 기준으로 끝까지 만들어 보는 개인 제품 실험실.
 
 Laughtale은 포트폴리오용 예제 모음이나 단일 서비스가 아니다. 여러 프로젝트를 진행하며
