@@ -15,6 +15,9 @@ coverage/
 graphify-out/
 .omo/
 
+# Skill dependency locking is deferred
+/skills-lock.json
+
 # Local idea notes
 .ideas/
 

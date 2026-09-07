@@ -79,8 +79,8 @@ Checked: 2026-09-05
 - Source: [`mattpocock/skills` — `grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling)
 - 설치: `.agents/skills/grilling/`에 project-local copy로 관리합니다.
 - 연결: Claude Code·Qwen Code는 각 전용 경로의 symlink로, Codex·Gemini CLI는 공용 `.agents/skills/`로 읽습니다.
-- 잠금: `skills-lock.json`의 source·hash로 추적합니다.
-- 재검토: skill update로 hash가 바뀌면 문서 생명주기·질문 방식과의 충돌을 다시 확인합니다.
+- 잠금: 도입을 보류합니다. Skill dependency·lock 관리는 아이디어이며 현재 설치·실행의 필수 조건이 아닙니다.
+- 재검토: skill 본문을 업데이트할 때 diff를 확인하고 문서 생명주기·질문 방식과의 충돌을 다시 검토합니다.
 - 적용: 관리자가 `grill`, `grill-me`, `stress-test`를 명시했을 때 task 승인 전에 실행합니다.
 - 산출물: 질문 세션 문서를 따로 만들지 않고, 확정된 결정만 기존 task에 기록합니다.
 - 제외: `grill-me` alias는 단독 실행 로직이 없어 설치하지 않습니다. `grill-with-docs`와 `domain-modeling`은 `CONTEXT.md`·ADR 구조가 현재 생명주기와 충돌하여 제외합니다.
