@@ -1,0 +1,7 @@
+interface:
+  display_name: "Project Status"
+  short_description: "요청할 때만 아이디어와 task 현황을 표시합니다"
+  default_prompt: "$project-status를 사용하여 아이디어와 task 현황을 보여주세요."
+
+policy:
+  allow_implicit_invocation: false

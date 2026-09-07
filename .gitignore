@@ -13,9 +13,13 @@ coverage/
 .cache/
 .turbo/
 graphify-out/
+.omo/
 
 # Local idea notes
 .ideas/
+
+# Generated project status
+.status/
 
 # Editors and operating systems
 .idea/

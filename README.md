@@ -48,7 +48,7 @@ Laughtale은 서로 무관한 예제를 모아 둔 저장소가 아닙니다. �
 ```text
 user
   └─ edge gateway
-       ├─ apps/web                  React frontend
+       ├─ apps/web                  Next.js frontend
        └─ services/<service-name>   독립적으로 배포되는 backend 서비스들
 ```
 
