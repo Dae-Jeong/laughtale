@@ -1,9 +1,260 @@
-# Linky Chat Internal DM
+# Linky Chat — 대용량·신뢰성 최종 검토안
 
 Status: spec-review  
-Phase: Phase 1 · 명세 초안  
+Phase: Phase 1 · 대용량 목표와 단계별 검증 검토안
 Updated: 2026-09-07  
-Approval: 방향만 승인되었으며 이 명세의 세부 계약과 구현은 아직 승인되지 않았습니다.
+Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. 기술 선택·수치·구현과 실험은 승인 전 제안입니다. ‘최종 검토안’은 승인 완료나 성능 보장을 뜻하지 않습니다.
+
+## 전체 설계 요약
+
+두 사람의 DM은 정확성을 검증하는 첫 절편이지 최종 목표가 아닙니다. 수많은 연결·메시지·수신자가
+특정 방에 집중되고 장애가 겹쳐도 무엇을 보장하는지 실제 시험으로 입증합니다.
+이 문서 앞부분은 목표 구조와 확장·증빙, 뒷부분은 첫 내부 DM의 상세 계약을 소유합니다.
+별도 최종안·plan·todo 문서를 병행 만들지 않습니다.
+
+| 선택 | 최종 검토 후보 |
+| --- | --- |
+| 실시간 | HTTP 쓰기·history + WebSocket 본문 이벤트입니다. 알림마다 본문을 HTTP로 다시 읽지 않습니다. |
+| 원본 | PostgreSQL Primary의 메시지와 방별 seq입니다. 소켓 송신·broker offset은 단말 수신 증거가 아닙니다. |
+| 분산 전달 | S2부터 transactional outbox·broker·fanout을 연결합니다. Kafka는 후보이며 지금 설치하지 않습니다. |
+| FE 소유 | 작성 중 초안·새로고침 복원·로컬 대기 메시지 저장 방식입니다. IndexedDB를 BE 계약으로 강제하지 않습니다. |
+| 최종 범위 | 내부 채팅과 후속 외부 플랫폼 동기화입니다. 그룹·외부 연계를 DM 완료로 간주하지 않습니다. |
+
+## 목표 아키텍처와 확장 단위
+
+```mermaid
+flowchart TB
+    CLIENT["클라이언트"] -->|"HTTP 전송 · history"| API["Chat API · 입력과 권한"]
+    CLIENT <-->|"WebSocket · 구독과 본문"| GW["Connection Gateway 여러 대"]
+    API --> CORE["Chat Core · 멱등성 / 방별 순서"]
+    CORE --> DB["PostgreSQL Primary · 원본"]
+    DB -->|"같은 트랜잭션"| OUTBOX["Outbox 테이블 · S2부터"]
+    OUTBOX --> RELAY["Relay · 재발행 가능"]
+    RELAY --> BROKER["내부 이벤트 Broker · Kafka 후보"]
+    BROKER --> FANOUT["Fanout · 구독 Gateway 선택"]
+    FANOUT --> GW
+    GW -->|"권한 · 권위 있는 head 재조정"| API
+```
+
+목표 책임 구조이며 설치 상태가 아닙니다. Outbox는 메시지와 같은 DB의 테이블입니다. Connection Gateway는
+소켓·구독·송신 큐를 소유하는 앱 역할이며 Nginx 같은 edge proxy와 다릅니다. S1은 API/Gateway를 한 프로세스에
+두어도 책임은 분리합니다. 새 서버가 기존 소켓을 자동 인계하지 않으므로 연결 분산·drain·재접속을 별도로 검증합니다.
+
+| 부하 | 확장·측정 영역 | 남는 병목 |
+| --- | --- | --- |
+| 동시 연결 | Gateway 수·연결당 RSS·FD·heartbeat | CPU만 낮다고 연결 여유가 있는 것은 아닙니다. |
+| 여러 방 쓰기 | API 수·DB 풀·commit율 | API만 늘리면 DB 경합이 악화될 수 있습니다. |
+| 한 방 쓰기 | 방별 직렬화·잠금 대기 | 행 잠금·Kafka partition은 hot 방을 자동 병렬화하지 않습니다. |
+| 많은 수신자 | fanout·Gateway 송신 큐·전송 byte | 한 이벤트의 비용이 온라인 수신자 수만큼 증폭됩니다. |
+| 재접속·history | 동기화 예산·조회율·페이지 크기 | 연결 복구를 DB 조회 폭주로 전파하지 않습니다. |
+
+hot 방은 유입 제한·다른 방과의 격리를 먼저 검증합니다. 전용 방 처리자·샤딩·셀 이동은 측정 후 비교하며
+도입 시 epoch/fencing을 실제 쓰기 경계에서 검사합니다. lease 만료만으로 늦은 구 소유자 쓰기를 막았다고 주장하지 않습니다.
+
+## 단계별 결과와 승인 경계
+
+| 단계 | 결과와 검증 | 아직 보장하지 않는 것 |
+| --- | --- | --- |
+| S1 정확성 | 두 합성 사용자 DM, 단일 API/Gateway, Primary 저장·키·seq·본문 전달·history/head 복구 | 다중 서버 전달·대규모 fanout·운영 인증입니다. |
+| S2 분산 전달 | API/Gateway 각각 2개 이상, outbox·broker·fanout, 재발행·노드 종료·재구독 | 실제 그룹 권한·샤딩·지역 장애 무손실입니다. |
+| S3 부하·확장 | 연결·쓰기·수신자 독립 부하, 증설 비교, hot 방·느린 수신자·배포 복합 장애 | 로컬 수치를 13억 사용자 보장으로 일반화하지 않습니다. |
+| S4 제품 확장 | 그룹·멤버 변경·외부 동기화·수정/삭제/보관 계약을 별도 확정 | 합성 부하 fixture를 실제 그룹·외부 연계 기능으로 표현하지 않습니다. |
+
+S1의 commit 후 메모리 전달은 history로 복구하는 기준선입니다. S2에서 메시지와 발행 의도를 원자화합니다.
+S1 처리량을 outbox·broker 비용을 포함한 S2 처리량으로 제시하지 않습니다. 단계마다 별도 구현 계획·예산·승인을 거칩니다.
+
+## ERD와 저장의 실현
+
+```mermaid
+erDiagram
+    USERS ||--o{ MEMBERS : joins
+    CONVERSATIONS ||--|{ MEMBERS : contains
+    CONVERSATIONS ||--o{ MESSAGES : owns
+    USERS ||--o{ MESSAGES : sends
+    MESSAGES ||--o| OUTBOX : "S2 생성 이벤트"
+    USERS {
+        uuid id PK
+        text display_name
+    }
+    CONVERSATIONS {
+        uuid id PK
+        text kind
+        bigint last_seq
+    }
+    MEMBERS {
+        uuid conversation_id PK,FK
+        uuid user_id PK,FK
+    }
+    MESSAGES {
+        uuid id PK
+        uuid conversation_id FK
+        uuid sender_id FK
+        uuid client_message_id
+        bigint seq
+        text text
+        int payload_version
+        text payload_hash
+        timestamptz created_at
+    }
+    OUTBOX {
+        uuid event_id PK
+        uuid message_id FK,UK
+        int schema_version
+        timestamptz published_at
+    }
+```
+
+- S1의 멱등성 결과는 별도 테이블 없이 메시지 행에 보관합니다. `UNIQUE(conversation_id, sender_id, client_message_id)`와 `UNIQUE(conversation_id, seq)`를 둡니다. 같은 본문의 다른 키는 별도 메시지입니다.
+- `seq > 0`, `last_seq >= 0`, 참여자 복합 PK를 검증합니다. history는 방별 seq 인덱스를 사용합니다. S1은 고정 멤버 DM이며 멤버 변경 API가 없습니다.
+- fingerprint는 보조입니다. 동일 키의 payload version·검증된 원문도 비교하여 hash만으로 다른 원문을 같다고 처리하지 않습니다.
+- S1에서 메시지·멱등 키를 만료·삭제하지 않습니다. 삭제·보관 정책을 추가할 때 키 보존과 cursor 연속성도 함께 재설계합니다.
+- S2에서는 신규 메시지·counter·생성 outbox를 같은 트랜잭션에 저장합니다. stable event ID를 유지하고 replay는 새 seq·outbox를 만들지 않습니다. relay claim/lease·재시도·격리 필드는 S2 계획에서 확정합니다.
+- 내구성은 실제 DB의 지속성 설정·스토리지 조건을 확인한 범위에서만 주장합니다. durability를 낮춘 처리량은 인정하지 않으며 단일 Primary는 디스크·호스트 소실이나 지역 장애 무손실을 보장하지 않습니다.
+
+## 분산 전달·복구 계약
+
+```mermaid
+sequenceDiagram
+    participant A as Chat API
+    participant D as PostgreSQL
+    participant R as Outbox Relay
+    participant B as Broker
+    participant G as Fanout · Gateway
+    participant C as 수신 클라이언트
+    A->>D: 방 잠금 · 메시지와 이벤트 E 저장
+    D-->>A: COMMIT 성공 · 이후 stored ACK
+    R->>D: 미발행 E 조회
+    R->>B: stable E 발행
+    B-->>R: broker 확인
+    Note over R,D: 완료 기록 전 종료하면 재발행됩니다
+    R->>D: 발행 완료 기록
+    B->>G: E 전달 · 중복 가능
+    G-->>C: commit된 본문 송신 시도
+    Note over G,C: 송신 성공은 단말 영속 수신이 아닙니다
+    C->>A: gap · 재접속 시 history
+```
+
+- broker 확인 전 outbox 완료를 기록하지 않습니다. bounded 재시도·격리·경보·재처리 경로를 두며 broker 확인을 수신·읽음으로 취급하지 않습니다.
+- Kafka 후보 key는 conversation ID입니다. 여러 relay·소비자 병렬 처리로 DB 순번과 도착 순서가 달라질 수 있습니다. S2에서 partition별 단일 발행 소유권과 방별 seq 검증·복구를 시험합니다.
+- Kafka 소비자 그룹은 이벤트를 분담합니다. fanout 담당자가 구독 Gateway 목록으로 전파하고 Gateway가 로컬 소켓으로 확장합니다. 같은 그룹의 Gateway 전부가 모든 이벤트를 받는다고 가정하지 않습니다.
+- 구독 등록·해제·TTL·재시작 재등록은 S2의 필수 계약입니다. 경로 준비 전에 subscribed를 보내지 않고 오래된 라우팅 때문에 놓친 이벤트는 history로 복구합니다.
+- fanout 처리는 bounded Gateway 큐 수락 또는 명시적 resync 처리를 기준으로 완료합니다. 단말 수신 확인이 아니며 느린 Gateway 때문에 전체 partition이 무한 대기하지 않습니다.
+- 후속 DB 변경 소비자는 `(consumer_name, event_id)` 원장과 변경을 함께 commit한 뒤 offset을 처리합니다. 소켓 송신·외부 provider 실행까지 exactly-once라고 부르지 않습니다.
+- 외부 동기화는 별도 adapter·권한·provider mapping·멱등 키를 갖습니다. 내부 대화 발송과 분리하며 provider 응답 유실은 조회·대사 계약이 필요합니다.
+
+### WebSocket 프레임 후보
+
+| 프레임 | 계약 |
+| --- | --- |
+| `subscribe {conversation_id}` | 세션·Origin·방 참여 권한을 검증합니다. 브라우저 탭/세션당 연결 하나를 기본으로 여러 방을 구독할 수 있습니다. |
+| `subscribed {conversation_id, head_seq, protocol_version}` | 라우팅 준비 후 Primary에서 head를 조회해 반환합니다. 이후 이벤트 buffer와 history를 합칩니다. |
+| `message.created {event_id, schema_version, message}` | message ID·방·sender·client key·seq·원문·생성 시각을 전달합니다. `(conversation_id, seq)`의 다른 원문은 오류입니다. |
+| `heads {items}` | 활성 방의 권위 있는 head 묶음이며 마지막 이벤트 유실을 감지합니다. 읽음 receipt가 아닙니다. |
+| `resync_required {conversation_id, reason}` | 버퍼 초과·라우팅 전환 때 사용합니다. 송신할 수 없으면 연결을 종료하고 재접속 복구를 유도합니다. |
+
+S1 생성 이벤트의 ID는 메시지 ID에 대응하는 stable 값으로 정하고 S2에서도 같은 identity를 유지합니다.
+이벤트 schema version과 payload fingerprint version은 별개입니다. seq/cursor의 JSON 표현은 Python·TypeScript의
+정수 범위 차이를 피하도록 구현 계획에서 고정하고 안전 정수 경계 시험을 포함합니다. 합의 전 무검증 number 변환을 사용하지 않습니다.
+
+## 과부하·런타임·배포 계약
+
+DB 풀 획득·잠금·statement·전체 요청 timeout, actor/방별 유입, 연결/구독 수, 소켓 큐의 메시지 수·byte 상한을
+구현 계획에서 명시합니다. 수치 미정인 상태로 과부하 시험을 실행하지 않습니다. rollback 확인 전 연결을 재사용하지 않습니다.
+수용 전 유입 제한은 429, 의존성 불능은 503 후보이며 commit 불명은 새 키로 재실행하지 않습니다.
+재접속·재시도는 backoff·jitter·예산을 두고 history 동기화도 제한합니다.
+
+Python은 async I/O와 blocking SDK를 구분하고 event loop lag·CPU·RSS·직렬화 비용을 측정합니다.
+단일 방 직렬화와 fanout CPU 병목을 GIL이라는 용어만으로 설명하지 않습니다. API의 FastAPI 선택이
+Gateway 언어의 영구 고정을 뜻하지 않으며, 언어 변경은 동일 계약·부하에서 실측 후 판단합니다.
+Gateway는 연결·송신 큐·메모리, API는 처리량·대기·CPU, relay는 outbox 최고 나이·lag를 함께 보고 DB 총 연결 예산을 제한합니다.
+
+배포는 새 버전 readiness → 신규 연결 유입 전환 → 구버전 drain → 제한 시간 내 재접속·history 복구 → 종료 순서로 검증합니다.
+기존 TCP/WebSocket은 끊길 수 있습니다. 무중단 기준은 저장·복구·가용성 목표이며 영구 연결 유지가 아닙니다.
+구·신버전의 키·seq·이벤트 스키마를 호환하고 DB migration은 확장 → 호환 배포 → 정리 순서로 계획합니다.
+알 수 없는 필수 이벤트 버전은 조용히 버리고 cursor를 전진하지 않으며 관측 가능한 오류·업데이트 안내·재동기화로 처리합니다.
+
+## 대용량 증빙 계획
+
+연결 수 C, 신규 메시지율 W, 방 수 R, 온라인 수신자 수 F, 본문 byte B, 재접속률을 독립 축으로 둡니다.
+전파량은 대략 `W × F`, 본문 전송량은 `W × F × B`이며 protocol·TLS·재시도·history 비용은 추가입니다.
+
+```mermaid
+flowchart TB
+    PLAN["환경 · workload · 임계치 사전 고정"] --> GEN["연결 생성기 + 독립 arrival-rate 쓰기"]
+    GEN --> SYSTEM["격리 채팅 시스템 · 실패 주입"]
+    GEN --> EXPECT["발신 의도 · 예상 수신자 원장"]
+    SYSTEM --> ACTUAL["DB · outbox · 실제 수신 결과"]
+    EXPECT --> CHECK["독립 검증기 · 집합 / 순서 / 권한"]
+    ACTUAL --> CHECK
+    SYSTEM --> METRICS["지연 · 오류 · 거절 · 자원 · backlog"]
+    CHECK --> REPORT["판정 · 한계 · 증설 효과와 비용"]
+    METRICS --> REPORT
+```
+
+| 시험 | 초기 실험 후보 | 증명할 항목 |
+| --- | --- | --- |
+| 연결 | 100 → 1,000 → 5,000, 쓰기율 고정 | 연결당 자원·heartbeat 비용입니다. |
+| 쓰기 | 10 → 100 → 500 msg/s, 방·수신자 고정 | 지속 가능한 commit율·잠금·풀 대기입니다. |
+| fanout | 방당 수신자 2 → 100 → 1,000, 쓰기율 고정 | 수신 지연·송신량·느린 수신자 격리입니다. |
+| 편중 | 쓰기의 80%가 한 방에 집중 | hot 방 한계와 다른 방의 서비스 품질입니다. |
+| spike·soak | 기준 부하 3배 30초, 안정 부하 60분 | 거절·회복·메모리와 backlog 누적입니다. |
+| 증설 | 같은 workload의 1대/2대, 이후 각각 한계 탐색 | 비용·용량·병목 이동이며 무조건 2배를 기대하지 않습니다. |
+
+숫자는 PC 적정량이나 실행 승인값이 아닙니다. 실행 전 현재 CPU·메모리·포트·DB·생성기 한도를 확인하고
+상한을 낮추거나 별도 장비를 정합니다. 대규모 수신 fixture는 운영 그룹 권한 기능과 분리합니다.
+k6는 HTTP arrival-rate·WebSocket 부하 후보이며 버전·프로토콜 적합성은 구현 전 고정합니다. 쓰기는 응답이 느려져도
+목표 유입률을 유지하는 open model로 비교하고 실제 전송률·발생하지 못한 작업도 보고합니다.
+연결·수신 대조는 별도 시나리오로 구성하며 S3는 생성기와 서버 분리를 우선합니다. 같은 PC는 자원 경쟁·loopback 한계를 기록합니다.
+
+### 통과·중단 기준 후보
+
+- 정확성: 시험 범위의 중복 저장·다른 원문·권한 위반·복구 후 영구 gap은 0건입니다. negative control로 검사기 자체도 검증합니다.
+- 안정 구간: 저장 ACK p99 ≤ 500ms, 정상 온라인 수신 반영 p99 ≤ 1s, 예상하지 않은 오류 ≤ 0.1%를 초기 목표로 제안합니다. 미실측이며 실행 전 승인합니다.
+- warm-up 2분·측정 10분·회복 구간을 분리해 같은 조건 3회 반복하는 후보입니다. backlog가 계속 증가하는 처리량은 안정 용량이 아닙니다.
+- 장애 복구 목표 후보는 의존성 회복 후 backlog·수신 복구 30초입니다. 초과하면 실패·재검토로 보고하며 장애 지속 중 상한을 주장하지 않습니다.
+- 중단 후보는 호스트 가용 메모리 20% 미만 30초, 공유 서비스 영향, 큐/DB 연결 예산 초과, 정확성 위반입니다. 환경별 절대 상한도 사전에 정합니다.
+- 생성기 포화·시계 오차·필수 지표 누락은 판정 불가입니다. 실패·거절·미수신을 빼고 성공 요청의 p99만 제시하지 않습니다.
+
+발신 원장은 `(run_id, sender, conversation, key, payload_digest)`와 요청 결과를 기록합니다. ACK된 키 집합은
+DB의 동일 원문 키 집합에 포함되어야 합니다. timeout도 commit될 수 있으므로 ACK 수와 DB 행 수가 같아야 한다고 판정하지 않습니다.
+시험 종료 후 입력을 멈추고 불명 요청을 같은 키로 해소한 뒤 snapshot H를 고정합니다. 고정 멤버·구독 fixture의
+예상 `(message_id, recipient_session)` 집합과 실제 최종 수신 집합을 비교합니다. 원시 중복 전송과 최종 중복 반영은 구분합니다.
+대규모 원장은 필요하면 디스크 기반 검증으로 분리하며 표본 검사만 했다면 전체 정합성 증명으로 보고하지 않습니다.
+단일 생성기의 monotonic clock 또는 동기화 오차를 포함한 분산 시각으로 지연을 측정하고 서버 로그만으로 단말 지연을 단정하지 않습니다.
+
+### 복합 장애 매트릭스
+
+| ID | 주입 | 통과 증거 | 단계 |
+| --- | --- | --- | --- |
+| D1 | commit 직후 API 종료 | 같은 키 결과 복구·원본과 S2 outbox 보존 | S1·S2 |
+| D2 | 발행 성공 후 relay 완료 기록 전 종료 | 재발행 허용, 원본·후속 DB 효과 중복 없음 | S2 |
+| D3 | broker 단절과 계속되는 쓰기 | outbox 누적 관측·예산 제한·복구 후 배출과 대사 | S2 |
+| D4 | Gateway 종료·fanout 교체·역순 replay | 재구독·history 복구, 여러 Gateway 수신자 누락 없음 | S2 |
+| D5 | poison event·필수 스키마 불일치 | 격리·경보·재처리, 완료로 숨기지 않음 | S2 |
+| D6 | 풀 고갈·잠금 지연·commit 응답 유실 | bounded 대기·결과 불명 복구·같은 키 유지 | S1·S3 |
+| D7 | hot 방 + 느린 수신자 + 3배 spike | 큐 상한·다른 방 목표·중단 기준 검사 | S3 |
+| D8 | 구·신버전 혼재 배포 + 대규모 재접속 | 스키마·키 호환·복구 예산·원본 보존 | S3 |
+| D9 | 생성기 포화·지표 삭제·정합성 보호 우회 대조군 | 실패·판정 불가를 실제 탐지 | 전 단계 |
+| D10 | 탈퇴·전송·전달 경합, 구 shard 소유자의 늦은 쓰기 | 권한 시점·쓰기 fencing 원자성 | S4·해당 기능 도입 시 |
+
+S1 정상·경합·유실은 아래 N/F/C 케이스를 유지합니다. 계측에는 offered/accepted/committed/replayed/conflicted/unknown/rejected,
+실제 수신·복구 지연, 연결·재접속·큐 byte·resync, DB 풀·잠금, S2 outbox 최고 나이·broker lag·fanout 실패,
+history·head 재조정 비용, CPU·RSS·event loop lag를 포함합니다. 없는 구성의 지표를 꾸미지 않습니다.
+본문·사용자·방·메시지 ID는 metric label이 아니라 별도 합성 시험 원장에서 대조합니다.
+보고에는 코드·설정 revision, DB durability·pool·노드 수, 부하 분포, 생성기 한계, 원시 결과·검증 집합,
+실패·미검증 범위, 증설 전후 용량과 월 비용 가정을 함께 남깁니다. 로컬 결과로 지역 장애·13억 사용자 수용을 주장하지 않습니다.
+
+### 참고 근거
+
+확인일: 2026-09-07. 아래 자료를 참고한 자체 설계이며 도구·운영 사례가 우리 성능을 보장하지 않습니다.
+
+- [Slack Real-time Messaging](https://slack.engineering/real-time-messaging/): 연결 Gateway와 방별 처리, 구독 Gateway로 fanout하는 책임 분리를 참고합니다.
+- [Kafka 4.1 Design](https://kafka.apache.org/41/design/design/): partition·소비·전달 범위를 참고하며 DB·단말까지 exactly-once로 확대하지 않습니다.
+- [k6 Open and closed models](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/): 응답 지연 때문에 유입도 함께 줄어드는 시험 왜곡을 피하도록 설계합니다.
+
+## S1 내부 DM 상세 계약
+
+이하 내용은 S1 범위입니다. S2~S4 구성은 앞부분의 단계별 검토를 거치며 S1에 몰아서 구현하지 않습니다.
 
 [Phase 0 작업 지도](../.ideas/linky-chat/work-map.md) ·
 [정합성 후보](../.ideas/linky-chat/reliability.md) ·
@@ -19,7 +270,7 @@ Approval: 방향만 승인되었으며 이 명세의 세부 계약과 구현은 
 | 영역 | 이번 결과물 |
 | --- | --- |
 | 화면 | 합성 사용자 선택, DM 본문 목록, 입력·전송, pending/결과 확인 중/stored/오류 상태입니다. |
-| API | HTTP 메시지 저장·history 조회, WebSocket 구독·변경 알림입니다. |
+| API | HTTP 메시지 저장·history 조회, WebSocket 구독·본문 이벤트·head 재조정입니다. |
 | 데이터 | 사용자·대화방·참여자·메시지 네 테이블 후보를 사용하며 멱등성·방별 seq를 검증합니다. |
 | 복구 | 새로고침·재접속·ACK/알림 유실에서 같은 원본을 조회하고 중복을 방지합니다. |
 | 계측 | 아래 기본 Metrics를 앱에서 수집·조회 가능하게 구현하고 정상·실패 입력으로 검증합니다. |
@@ -105,7 +356,7 @@ workload를 선행 조건으로 두지 않습니다.
 | Web 언어 | TypeScript | 이번 명세의 승인 전 후보입니다. |
 | Chat API | FastAPI + typed Python | 제안이며 설치 전입니다. |
 | 저장소 | PostgreSQL + 미정 driver·mapping 도구 | 제안이며 database·schema를 만들지 않았습니다. |
-| 실시간 알림 | WebSocket notification + HTTP history 복구 | 제안이며 전달 보장의 기준은 DB history입니다. |
+| 실시간 전달 | WebSocket 본문 이벤트 + HTTP history 복구 | 제안이며 원본과 복구 기준은 DB history입니다. |
 | 실험 identity | loopback 전용 합성 session | 아래 제약을 포함한 제안입니다. |
 | 검증 | Python test runner + 실제 격리 PostgreSQL + browser E2E | 도구와 정확한 명령은 구현 계획 승인 후 확정합니다. |
 
@@ -161,7 +412,7 @@ flowchart TB
     EXTERNAL["외부 플랫폼<br/>이번 흐름과 연결되지 않음"]
 ```
 
-실시간 notification은 새 이력이 있음을 빠르게 알리는 수단입니다. 메시지 원본과 복구 기준은
+실시간 notification은 commit된 메시지 본문을 빠르게 전달하는 이벤트입니다. 메시지 원본과 복구 기준은
 PostgreSQL history이며, notification 수신 자체를 영속 전달이나 읽음으로 해석하지 않습니다.
 
 ## Identity와 권한 계약
@@ -201,7 +452,7 @@ PostgreSQL history이며, notification 수신 자체를 영속 전달이나 읽�
   공백이나 Unicode를 몰래 정규화해 같은 payload로 취급하지 않습니다.
 - 신규 저장은 `201`, 같은 key·같은 payload의 replay는 `200`을 반환하는 후보로 둡니다.
   두 응답은 같은 `message_id`, `conversation_id`, `sender_id`, `client_message_id`, `seq`,
-  `state: stored`를 반환합니다.
+  `text`, `created_at`, `state: stored`를 반환합니다.
 - 같은 key에 다른 payload가 오면 `409 idempotency_conflict`로 거부합니다. 기존 message를
   덮어쓰거나 새 message·새 `seq`를 만들지 않습니다.
 
@@ -301,16 +552,15 @@ sequenceDiagram
 이어 처리합니다. Buffer 한도를 넘거나 gap이 남으면 cursor를 임의로 올리지 않고 마지막 연속
 cursor부터 동기화를 다시 시작합니다. 재접속과 앱 focus 시 server head를 즉시 다시 비교합니다.
 
-연결과 focus가 계속 유지되어 gap을 알려 줄 다음 notification도 없는 경우를 위해, 승인 전 후보로
-foreground의 현재 DM에서 5초마다 head 조회를 시도합니다. 이전 재조정이 진행 중이면 요청을
-겹치지 않습니다. Head 비교도 현재 cursor로 같은 history endpoint를 호출해 응답의
-`snapshot_head_seq`를 확인하며 별도 protocol을 추가하지 않습니다. 성공한 head가
-`last_contiguous_seq`보다 크면 같은 history 계약으로 동기화합니다.
-Foreground이고 network 요청이 성공할 수 있는 상태라면 마지막 notification 하나가 유실되어도
-`주기 5초 + 성공한 head/history 조회와 render 지연` 안에 복구합니다. 실패한 조회는 cursor를
-전진시키지 않고 다음 가능한 주기에 다시 시도합니다. Browser의 background timer 제한·suspend와
-network 장애가 지속되는 동안에는 이 시간 범위를 보장하지 않으며, foreground 복귀·focus·재접속
-trigger에서 즉시 재조정합니다.
+기존 ‘클라이언트별 5초 HTTP history 조회’ 후보는 폐기합니다. 대체 후보는 Gateway가 활성 방의
+권위 있는 head를 묶어서 주기적으로 재조정하고 `heads` 프레임으로 전달하는 방식입니다.
+S1 주기는 10초에 jitter를 주는 실험 후보이며 이전 재조정과 겹치지 않게 합니다. S2에서는 방별
+조정 소유권·묶음 조회와 갱신 라우팅을 정해 Gateway마다 같은 방을 DB 조회하는 증폭을 줄입니다.
+메시지 이벤트 캐시만 비교하면 마지막 발행 유실을 감지하지 못하므로 Primary 원본의 head와 비교합니다.
+head가 마지막 연속 cursor보다 클 때만 history로 누락을 채웁니다. 권위 조회 실패·오래된 head는
+정상으로 표시하지 않습니다. 정상 연결·network·DB에서 복구 목표는 `재조정 주기 + head 전달 + history + 반영 지연`입니다.
+장애 지속·브라우저 suspend 동안 이 상한을 보장하지 않으며 focus 복귀·재접속 시 즉시 동기화합니다.
+작성 중 초안과 로컬 대기 메시지의 보관·새로고침 복원 방식은 FE가 결정하며 이번 BE 설계가 강제하지 않습니다.
 
 ## 외부 발송 차단 계약
 
@@ -381,7 +631,7 @@ async def send_direct_message(
 | F6 | local 외의 interface 또는 production mode에서 실험 identity를 켭니다. | route를 사용할 수 없거나 시작이 실패하며 실험 session을 운영 인증으로 사용할 수 없습니다. |
 | F7 | 내부 DM을 보낸 뒤 외부 발송 관련 대역의 호출을 확인합니다. | 외부 adapter·provider 호출은 0회이며 내부 message는 외부 queue·outbox에 나타나지 않습니다. |
 | F8 | 잘못된 UUID, 공백-only·2,001자 text, limit 0·101, 음수·역전·현재 head 초과 cursor를 보냅니다. | `422`로 거부하며 message·counter·cursor state가 변하지 않습니다. |
-| F9 | B의 연결과 focus를 유지한 채 마지막 notification 하나만 버리고 이후 notification을 만들지 않습니다. | Foreground와 정상 network에서 주기적 head/history 재조정으로 `5초 + 조회·render 지연` 안에 message를 복구하며 재접속·focus event에 의존하지 않습니다. |
+| F9 | B의 연결과 focus를 유지한 채 마지막 notification 하나만 버리고 이후 notification을 만들지 않습니다. | 정상 network·DB에서 권위 있는 주기적 heads로 유실을 발견하고 `재조정 주기 + 전달·조회·반영 지연` 안에 복구합니다. 재접속·다음 메시지·클라이언트별 상시 HTTP polling에 의존하지 않습니다. |
 
 ### 경합 경로
 
@@ -452,7 +702,7 @@ Prometheus/Grafana 대시보드와 HPA는 별도 작업으로 진행합니다.
 - 동일 key replay와 다른 payload conflict를 DB constraint를 포함해 판정합니다.
 - 공개 UUID·text·pagination 입력의 형식과 범위를 server에서 검증합니다.
 - cursor를 conversation별 마지막 연속 `seq`로만 전진하고 pagination snapshot 경계를 유지합니다.
-- Foreground에서는 5초 주기와 focus·재접속 trigger로 head/history를 재조정합니다.
+- 권위 있는 주기적 heads와 focus·재접속 trigger로 누락을 감지하고 필요한 history만 조회합니다.
 - 내부 message를 외부 발송 경로와 source dependency에서 분리합니다.
 - 실패·경합 test에서 응답뿐 아니라 DB 원본, counter, 호출 횟수를 함께 확인합니다.
 - 합성 데이터만 사용하고 secret·session value·message 본문을 log에 남기지 않습니다.
@@ -484,12 +734,14 @@ Prometheus/Grafana 대시보드와 HPA는 별도 작업으로 진행합니다.
 2. **실험 identity:** 두 browser 검증을 위해 loopback 전용 synthetic session을 추천합니다.
    이는 누구나 synthetic identity를 선택할 수 있는 spoofable harness이며, 실제 인증 검증과
    production 사용을 명시적으로 제외하는 조건으로 승인해야 합니다.
-3. **저장·순서·복구 계약:** commit 후 stored ACK, 대화방 row-lock counter, 연속 `seq`,
-   snapshot pagination, subscribe-before-catch-up과 foreground 5초 head 재조정을 한 묶음으로
-   추천합니다. 처리량 최적화보다 영구 누락 방지를 우선하며, 이 계약을 완화하려면 대체
-   watermark·gap 복구 증거가 필요합니다.
+3. **저장·순서·전파·검증 계약:** commit 후 stored ACK, 방별 row-lock counter·연속 seq,
+   snapshot pagination·본문 이벤트·권위 head 복구, S2 outbox·broker·fanout과 S3 부하·복합 장애
+   계획을 단계별 추천안으로 검토합니다. 수치 후보는 실험 전 환경·예산과 함께 확정하고
+   저장·복구 계약을 완화하려면 대체 watermark·gap 복구 증거가 필요합니다.
 
-## Phase 1 검토 기록
+## 이전 S1 초안의 검토 기록
+
+아래는 이전 S1 초안의 검사 이력입니다. 이번 대용량 확장·head 계약 변경의 검증 결과로 재사용하지 않습니다.
 
 | 검토 항목 | 결과 | 비고 |
 | --- | --- | --- |
@@ -501,6 +753,13 @@ Prometheus/Grafana 대시보드와 HPA는 별도 작업으로 진행합니다.
 | Local Markdown link | 통과 | 이 문서와 `tasks/README.md`의 상대 link target이 checkout에 존재함을 확인했습니다. |
 | Markdown LSP | 미지원 | 현재 `.md` LSP가 구성되지 않아 별도 diagnostic은 실행할 수 없습니다. |
 | 앱 build·test·browser 검증 | 미실행 | 애플리케이션이 없고 구현 승인을 받지 않았습니다. |
+
+## 이번 최종 검토안의 문서 검증
+
+- Mermaid 6개를 실제 렌더링하고 PC 1440×1080에서 전체 구조·ERD·증빙 흐름을 확인했습니다. 수평 넘침은 없었습니다.
+- 상대 파일 링크와 `git diff --check`를 확인했습니다. 기존 5초 HTTP polling과 FE 초안 복원 강제는 현재 제안에서 제외했습니다.
+- 기존 N/F/C 기준은 유지하며 F9를 권위 head 재조정 후보에 맞췄습니다. D1–D10과 S1–S4는 검증 계획이지 실행 결과가 아닙니다.
+- 애플리케이션·DB·broker·부하 생성·배포·실측 검증은 미실행입니다. 다음 단계는 세부 계약 승인과 해당 단계 구현 계획입니다.
 
 ## Human gate
 

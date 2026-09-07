@@ -10,7 +10,7 @@
 
 ## Active
 
-- [`linky-chat-internal-dm.md`](linky-chat-internal-dm.md) — 합성 사용자 두 명의 첫 내부 DM vertical slice 명세
+- [`linky-chat-internal-dm.md`](linky-chat-internal-dm.md) — 대용량 채팅 최종 검토안: 목표 구조·ERD·실시간/복구 계약·단계별 부하와 복합 장애 검증
 - [`k3s-bootstrap.md`](k3s-bootstrap.md) — 로컬 K3s, Traefik, Next.js 최소 실행 경로
 - [`criteria-governance.md`](criteria-governance.md) — 대화에서 실행 가능한 기준·검증·SoT까지의 연결 구조
 
