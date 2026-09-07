@@ -10,8 +10,8 @@
 
 ## Active
 
-- [`logging-design-review.md`](logging-design-review.md) — 로깅 구조·대안·기업 레퍼런스의 사용자 판단용 문서이며 FastAPI 템플릿 작업과 연결됩니다.
-- [`fastapi-template-prototype.md`](fastapi-template-prototype.md) — FastAPI 함수·DI 흐름과 Compose·환경변수의 로컬 템플릿 초안
 - [`linky-chat-internal-dm.md`](linky-chat-internal-dm.md) — 합성 사용자 두 명의 첫 내부 DM vertical slice 명세
 - [`k3s-bootstrap.md`](k3s-bootstrap.md) — 로컬 K3s, Traefik, Next.js 최소 실행 경로
 - [`criteria-governance.md`](criteria-governance.md) — 대화에서 실행 가능한 기준·검증·SoT까지의 연결 구조
+
+공통 템플릿·로깅 설계는 [Backend Template](../external/backend-template/design/README.md)으로 이관했습니다. 이곳의 활성 작업으로 병행 관리하지 않습니다.

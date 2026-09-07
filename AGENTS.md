@@ -9,8 +9,8 @@
 7. Project override for spec-driven work: combine specification, plan, task checklist, and diagrams in one named `tasks/<work>.md`. Do not create root `SPEC-*`, generic `tasks/plan.md`, or generic `tasks/todo.md` unless the admin explicitly requests separate artifacts.
 8. Use [`.agents/skills/grilling/SKILL.md`](.agents/skills/grilling/SKILL.md) only when the admin explicitly asks to grill or stress-test a consequential decision. Run it before approving the task specification, and record only settled decisions in the existing `tasks/<work>.md`; do not create a separate grill session, `CONTEXT.md`, or ADR tree.
 9. Use [`.agents/skills/project-status/SKILL.md`](.agents/skills/project-status/SKILL.md) only when the admin explicitly asks to see project status, ideas, or tasks, including a direct `$project-status` invocation. Do not run it during unrelated work or as a routine progress update.
-10. Start code design, implementation, and review at [`docs/engineering-principles.md`](docs/engineering-principles.md). Read its common rules, then only the owner documents for responsibilities being changed or contracts and invariants being applied, following applicable conditional links. Do not load the entire engineering directory. Keep each rule in its owner document, not in agent adapters.
-11. The project's [TDD applicability override](docs/engineering/testing.md#tdd-적용-상태) takes precedence over downstream implementation instructions in installed skills. Consult it before following a skill's implementation phase.
+10. Start design, implementation, and review at [the document routing table](docs/README.md#작업별-읽기). Backend rules come from the pinned `external/backend-template` submodule; read only the relevant owner documents and applicable local supplements. Do not edit the dependency or silently substitute another checkout or remote main.
+11. The project's [TDD applicability override](docs/README.md#tdd-적용-상태) takes precedence over downstream implementation instructions in installed skills. Consult it before following a skill's implementation phase.
 
 ## Context to remember
 

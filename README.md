@@ -38,18 +38,36 @@ Laughtale은 서로 무관한 예제를 모아 둔 저장소가 아닙니다. �
 
 **초기 구상 단계입니다. 실행 가능한 애플리케이션은 아직 없습니다.**
 
-지금 저장소에 있는 것은 로고와 이 문서, 그리고 작업 규칙뿐입니다. 코드가 들어오는 시점에
+현재는 프로젝트 소개·설계와 작업 문서, 스킬, 공통 개발 기준 참조를 제공합니다. 코드가 들어오는 시점에
 필요한 환경, 실행 방법, 테스트 방법을 이 문서에 함께 적습니다.
+
+## 저장소 준비와 문서
+
+```bash
+git clone --recurse-submodules https://github.com/Dae-Jeong/laughtale.git
+cd laughtale
+```
+
+이미 clone했다면 저장소 루트에서 실행합니다.
+
+```bash
+git submodule update --init --recursive
+```
+
+공통 백엔드 개발 기준은 [Backend Template](external/backend-template/design/README.md)을
+`external/backend-template/` submodule로 가져와 커밋을 고정합니다. 런타임 패키지 import나 앱 설치가 아니며
+상위 저장소의 변경이 자동 적용되지 않습니다. 위 명령은 submodule 연결을 포함한 커밋을 받은 뒤 사용할 수 있습니다.
+[문서 안내](docs/README.md)에서 제품·서비스·인프라 설계와 필요한 공통 기준을 선택합니다.
 
 ## 앞으로 예상하는 모습
 
 아래는 **계획이며 구현된 구조가 아닙니다.** 제품이 구체화되면서 달라질 수 있습니다.
 
-```text
-user
-  └─ edge gateway
-       ├─ apps/web                  Next.js frontend
-       └─ services/<service-name>   독립적으로 배포되는 backend 서비스들
+```mermaid
+flowchart TB
+    USER["사용자"] --> EDGE["Edge Gateway"]
+    EDGE --> WEB["apps/web · Next.js"]
+    EDGE --> SERVICES["services · 독립 backend 서비스"]
 ```
 
 - Gateway가 외부 트래픽의 단일 진입점이 되고, 프런트엔드와 각 backend 서비스로 요청을

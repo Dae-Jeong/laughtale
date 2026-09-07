@@ -8,7 +8,7 @@ Approval: 방향만 승인되었으며 이 명세의 세부 계약과 구현은 
 [Phase 0 작업 지도](../.ideas/linky-chat/work-map.md) ·
 [정합성 후보](../.ideas/linky-chat/reliability.md) ·
 [배포 후보](../.ideas/linky-chat/deployment.md) ·
-[개발 규칙](../docs/engineering-principles.md) ·
+[개발 기준 안내](../docs/README.md#작업별-읽기) ·
 [문서 생명주기](../docs/README.md)
 
 ## 1차 애플리케이션 컨펌 요약
@@ -412,7 +412,7 @@ Phase 2에서 별도 승인을 받아 정합니다. Test double 통과를 Postgr
 
 ### 첫 앱의 Metrics 계약 후보
 
-[공통 Metrics](../docs/engineering/metrics.md)와 [Runtime Review](../docs/engineering/runtime-review.md)를 따릅니다.
+[공통 Metrics](../external/backend-template/design/observability.md#metrics의-공통-판단-기준)와 [Runtime Review](../external/backend-template/design/runtime-review.md)를 따릅니다.
 이 절은 채팅 고유 정의만 소유하며 도구 설치·공용 수집기·운영 설정을 확정하지 않습니다.
 
 | 지표 | 목적·정의 | 검증 |

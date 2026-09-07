@@ -89,6 +89,49 @@ flowchart LR
 - 완료된 task를 보관하기 위한 `archive/`는 만들지 않습니다. 과거 작업은 Git 이력을 사용합니다.
 - `docs/` 파일이 세 개를 넘기기 전에는 하위 분류 디렉터리를 만들지 않습니다.
 
-## Canonical Documents
+## 작업별 읽기
 
-- [`engineering-principles.md`](engineering-principles.md) — 공통 개발 규칙과 작업별 선택 읽기 진입점입니다. 상세 기준은 `engineering/`의 책임별 문서가 소유하며, 해당 진입점에서 필요한 문서만 선택합니다.
+Laughtale은 제품·서비스 계약과 인프라·배포·통합 운영 결정을 소유합니다. 공통 백엔드 개발 기준은
+고정된 [Backend Template](../external/backend-template/design/README.md)이 소유하며 이곳에 복제하지 않습니다.
+변경 책임과 적용할 계약에 해당하는 문서만 선택하고 선택한 문서는 끝까지 읽습니다. 전체 폴더를 일괄 읽지 않습니다.
+
+| 작업 | 읽을 정본 |
+| --- | --- |
+| 제품 방향·현재 범위 | [프로젝트 README](../README.md) |
+| 논의·구현 중인 기능·인프라·K8s | [현재 task](../tasks/README.md)의 해당 문서 |
+| 업무·Domain·DB·외부 연계·검증 | [공통 개발 원칙](../external/backend-template/design/engineering.md) |
+| DI·초기화·종료·정합성·DB 확장 | [Backend 공통 설계](../external/backend-template/design/backend.md) |
+| HTTP·API 변환, DB·외부 연계의 기존 세부 선택 | [서비스 계약 보완](service-contracts.md)의 해당 절 |
+| 로그·계측·수집 안전·경보 판단 | [관측](../external/backend-template/design/observability.md) |
+| 부하·GIL·GC·worker·용량·월 비용 | [Runtime Review](../external/backend-template/design/runtime-review.md) |
+| 언어별 구현·테스트 | [구현별 안내](../external/backend-template/design/implementations/README.md)에서 대상 기술만 선택합니다. |
+
+```mermaid
+flowchart TB
+    AGENT["AGENTS.md"] --> ROUTE["docs/README.md · 작업별 읽기"]
+    ROUTE --> COMMON["Backend Template · 고정 버전 공통 기준"]
+    ROUTE --> LOCAL["Laughtale · 제품 / 서비스 / 인프라 기준"]
+    COMMON --> TASK["해당 task · 적용과 검증"]
+    LOCAL --> TASK
+    TASK --> VERIFIED["검증된 서비스 코드와 운영 문서"]
+```
+
+계측 도구 설치·배포·자동 확장은 해당 task에서 별도로 승인·검증합니다. 공통 계측 기준이 있다는 이유로
+인프라를 설치하지 않습니다. 성능 시험의 환경·임계치·원시 결과·비용 가정은 해당 `tasks/<work>.md`에 남기고
+반복 사용할 운영 사실만 이 문서의 생명주기에 따라 승격합니다. 아직 없는 운영 문서 폴더를 미리 만들지 않습니다.
+
+## 공통 기준 버전과 변경
+
+초기 채택 버전은 `7f306c5a1a0cec5d38d709a4b958bdcab8a20da3`입니다. 실제 적용 버전은 Git의
+`external/backend-template` gitlink가 기준이며 `git submodule status`로 확인합니다. 이 버전은 설계만 제공하며 구현 완료를 뜻하지 않습니다.
+
+- 문서가 없으면 [README의 초기화 명령](../README.md#저장소-준비와-문서)을 실행합니다. 형제 디렉터리나 원격 main으로 대체하지 않습니다.
+- 공통 변경은 Backend Template에서 리뷰한 뒤 채택할 커밋의 차이·서비스 영향·검증을 확인하고 gitlink를 별도로 갱신합니다. 기본 절차에 `update --remote`를 사용하지 않습니다.
+- 같은 적용 범위의 충돌은 숨기지 않습니다. 명시적으로 승인한 프로젝트 예외만 우선하며 이유·범위·재검토 조건은 해당 로컬 문서에 남깁니다.
+- 기존 규칙 중 고정 버전이 아직 담지 않은 세부 선택은 [서비스 계약 보완](service-contracts.md)에만 남깁니다. 이후 공통 정본에서 대응을 확인하면 보완을 제거합니다.
+- 소스 복사·실행 코드 재사용·라이선스 판단·skill 설치는 문서 참조와 별도 작업입니다.
+
+## TDD 적용 상태
+
+TDD는 조사·실험 후보이며 현재 의무 개발 방식이 아닙니다. 설치된 설계 스킬이 후속 TDD 스킬을
+지시하더라도 자동 적용·설치하지 않습니다. 테스트 작성 순서의 의무화는 별도 승인하며 검증 증거는 공통 개발 기준을 따릅니다.
