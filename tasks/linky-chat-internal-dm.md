@@ -9,6 +9,8 @@ Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. �
 
 [한 장 시각화 — HTML](linky-chat-overview.html)에서 전체 흐름·보장·확장·증빙을 함께 볼 수 있습니다. 이 문서가 상세 계약의 기준입니다.
 
+[실제 동작 순서 — 전송·동시성·복구·확장](#동작-흐름)에서 메시지 하나가 이동하는 과정을 볼 수 있습니다.
+
 두 사람의 DM은 정확성을 검증하는 첫 절편이지 최종 목표가 아닙니다. 수많은 연결·메시지·수신자가
 특정 방에 집중되고 장애가 겹쳐도 무엇을 보장하는지 실제 시험으로 입증합니다.
 이 문서 앞부분은 목표 구조와 확장·증빙, 뒷부분은 첫 내부 DM의 상세 계약을 소유합니다.
@@ -334,6 +336,141 @@ workload를 선행 조건으로 두지 않습니다.
 - Kafka, Redis, Elasticsearch, replica, shard, K8s 추가 설치나 설정을 포함하지 않습니다.
 - DB 생성·migration 실행, 공유 PostgreSQL 변경, 외부 부하 발생을 포함하지 않습니다.
 - 13억 사용자 규모의 처리량·정확성·가용성을 달성하거나 입증했다고 주장하지 않습니다.
+
+## 동작 흐름
+
+아래는 설계 후보의 동작이며 구현·성능 검증 결과가 아닙니다. 서버 배치는 [아이콘 구성도](linky-chat-overview.html)를
+참고합니다. 순서 그림에서는 HTTP/WSS를 전달하는 Traefik을 생략합니다. S1의 API와 Gateway는
+한 프로세스 안의 역할이며 S2부터 분리·복제합니다. PostgreSQL Primary가 저장 결과의 원본입니다.
+
+### 1. 메시지 하나를 보낼 때 — S1
+
+수신자는 먼저 방을 구독합니다. 전송 버튼을 누른 순서가 아니라 DB에 확정된 방별 `seq`가 대화 순서입니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as 발신자 A
+    participant API as Chat API
+    participant DB as PostgreSQL
+    participant GW as WS Gateway
+    actor B as 수신자 B
+    B->>GW: WSS 연결 · 방 구독
+    GW->>DB: 권한 확인 · 구독 경로 준비 후 head 조회
+    DB-->>GW: committed head
+    GW-->>B: subscribed · head_seq
+    Note over B: 기존 기록은 history로 동기화합니다
+    A->>API: HTTP POST · 전송 키 K · 본문
+    API->>DB: BEGIN · 방 행 잠금 · 권한/키 검사
+    API->>DB: 신규 K이면 counter+1 · 메시지 저장
+    API->>DB: COMMIT
+    DB-->>API: message M · seq=42 확정
+    par 저장 결과 응답
+        API-->>A: stored ACK · M · seq=42
+    and 실시간 전달 시도
+        API->>GW: commit된 message.created
+        GW-->>B: WSS · 메시지 본문 · seq=42
+        B->>B: 중복 제거 · 연속 seq 반영
+    end
+```
+
+`stored`는 DB 저장 완료이지 상대방 수신·읽음이 아닙니다. ACK와 실시간 수신 사이의 도착 순서는 보장하지 않습니다.
+S1은 commit 직후 프로세스가 종료되면 실시간 전달을 놓칠 수 있으며, 아래 복구 경로가 이를 보완합니다.
+
+### 2. 같은 방으로 동시에 보낼 때
+
+두 요청은 다른 API 인스턴스에서 처리해도 같은 DB의 방 행 잠금으로 순서를 정합니다.
+아래는 서로 다른 전송 키이며 A가 잠금을 먼저 획득한 예시입니다. 다른 방의 잠금까지 묶지는 않습니다.
+
+```mermaid
+sequenceDiagram
+    participant A as 요청 A
+    participant DB as 같은 방 · DB counter=41
+    participant B as 요청 B
+    A->>DB: BEGIN · 방 행 잠금 획득
+    B->>DB: BEGIN · 같은 방 잠금 요청
+    Note over B: 제한된 시간 동안 대기합니다
+    A->>DB: counter=42 · 메시지 저장 · COMMIT
+    DB-->>A: seq=42 확정 · 잠금 해제
+    DB-->>B: 잠금 획득
+    B->>DB: counter=43 · 메시지 저장 · COMMIT
+    DB-->>B: seq=43 확정
+```
+
+A가 rollback하면 counter 변경도 취소돼 B는 42를 사용합니다. 같은 전송 키·같은 본문 재시도는
+새 번호 없이 기존 결과를 반환하고, 같은 키·다른 본문은 `409`로 거부합니다. 한 방의 잠금 경합은
+초대형 방의 병목 후보이며 부하 시험에서 별도로 측정합니다.
+
+### 3. 저장 응답 또는 실시간 메시지를 놓쳤을 때
+
+발신자는 같은 키로 저장 결과를 확인하고, 수신자는 마지막으로 연속 반영한 순번부터 복구합니다.
+
+```mermaid
+sequenceDiagram
+    actor A as 발신자 A
+    participant API as Chat API
+    participant DB as PostgreSQL
+    participant GW as WS Gateway
+    actor B as 수신자 B
+    Note over API,DB: M · seq=42는 이미 COMMIT됐습니다
+    API--xA: stored ACK 유실
+    GW--xB: seq=42 이벤트 유실
+    A->>API: 같은 키 K · 같은 본문 재시도
+    API->>DB: 권한 · 기존 K 결과 확인
+    DB-->>API: 기존 M · seq=42
+    API-->>A: 기존 stored 결과 · 추가 저장 없음
+    alt 연결이 끊겼습니다
+        B->>GW: backoff 후 재접속 · 재구독
+        GW->>DB: 구독 경로 준비 후 head 조회
+        DB-->>GW: head=42
+        GW-->>B: subscribed · head=42
+    else 연결은 살아 있지만 마지막 이벤트를 놓쳤습니다
+        GW->>DB: 활성 방의 권위 있는 head 묶음 조회
+        DB-->>GW: head=42
+        GW-->>B: heads · head=42
+    end
+    Note over B: 로컬 cursor=41 · 새 이벤트는 제한된 buffer에 보관합니다
+    B->>API: HTTP history · after_seq=41
+    API->>DB: 권한 확인 · snapshot head 고정 · 순서대로 조회
+    DB-->>API: 누락 메시지 · snapshot 범위
+    API-->>B: history page · next_cursor · snapshot_head
+    Note over B: 같은 snapshot의 모든 page를 조회합니다
+    B->>B: history와 buffer 중복 제거 · gap 없이 반영
+    Note over B: 연속 반영한 seq까지만 cursor를 전진합니다
+```
+
+history 중 새 메시지는 buffer와 합칩니다. gap·buffer 초과가 있으면 마지막 연속 cursor부터 다시 동기화합니다.
+DB·네트워크가 계속 불통이면 즉시 복구할 수 없습니다. 작성 중 초안의 새로고침 복원은 이 경로와 별개인 FE 책임입니다.
+
+### 4. 서버가 여러 대로 늘어날 때 — S2
+
+S1의 프로세스 내부 전달을 아래 경로로 확장합니다. 메시지와 Outbox는 같은 PostgreSQL 트랜잭션에 저장합니다.
+
+```mermaid
+sequenceDiagram
+    participant API as Chat API 복제본
+    participant DB as PostgreSQL · Messages / Outbox
+    participant R as Outbox Relay
+    participant Q as Broker · Kafka 후보
+    participant F as Fanout
+    participant G as 구독자가 연결된 Gateway들
+    actor C as 각 Gateway의 수신자들
+    API->>DB: 메시지 · counter · Outbox를 함께 COMMIT
+    DB-->>API: 저장 확정 · 이후 발신자에게 stored ACK
+    R->>DB: 미발행 Outbox 조회 / claim
+    DB-->>R: stable event ID · 메시지
+    R->>Q: 이벤트 발행
+    Q-->>R: broker 수락 확인
+    R->>DB: 발행 완료 기록
+    Q->>F: 이벤트 전달 · 중복 가능
+    F->>G: 방 구독 위치에 따라 각 Gateway로 전달
+    G-->>C: WSS · 본문 이벤트
+    C->>C: 중복 제거 · 순서 정렬 · gap은 history 복구
+```
+
+발행 후 완료 기록 전에 relay가 종료되면 재발행할 수 있습니다. 따라서 중복을 허용하고 같은 이벤트의
+효과를 중복 생성하지 않습니다. Broker 소비자 그룹 하나만으로 모든 Gateway에 broadcast되지는 않습니다.
+저장→발행→수신은 서로 다른 완료 지점이며, 외부 플랫폼 동기화는 별도 adapter 계약으로 후속 추가합니다.
 
 ## 기능 소유권
 
