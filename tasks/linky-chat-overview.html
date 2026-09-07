@@ -1,39 +1,73 @@
 <!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Linky Chat — 대용량·신뢰성 설계 한 장</title>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linky Chat · Server Architecture</title>
 <style>
-:root{color-scheme:dark;--bg:#101820;--panel:#19242e;--line:#344651;--text:#edf3f5;--muted:#aebfc9;--green:#8ee3c1;--purple:#bdadf5}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}main{max-width:1440px;margin:auto;padding:30px 42px 24px}header{display:flex;justify-content:space-between;align-items:start;gap:24px}.eyebrow{color:var(--green);font-size:12px;letter-spacing:2px;font-weight:700}h1{font-size:33px;letter-spacing:-1.1px;margin:7px 0 8px}p{margin:0;line-height:1.55}.intro{color:var(--muted);font-size:15px}.status{border:1px solid var(--line);padding:10px 14px;border-radius:8px;color:var(--muted);font-size:12px;white-space:nowrap;text-align:right}.status strong{color:var(--text);display:block;margin-bottom:4px}.architecture{margin-top:22px;border:1px solid var(--line);border-radius:12px;padding:17px 20px 7px;background:var(--panel)}.section-title{display:flex;justify-content:space-between;align-items:center;gap:16px}h2{font-size:16px;margin:0}.legend{font-size:12px;color:var(--muted)}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 6px 0 14px}.green{background:var(--green)}.purple{background:var(--purple)}svg{width:100%;height:auto;display:block}svg text{font-family:inherit}.node{fill:#202f39;stroke:#567b70;stroke-width:1.4}.later{stroke:#8977b7;stroke-dasharray:5 4}.label{fill:var(--text);font-size:17px;font-weight:700}.small{fill:var(--muted);font-size:12px}.caption{fill:var(--green);font-size:12px}.edge{fill:none;stroke:var(--muted);stroke-width:1.6}.return{stroke:var(--green);stroke-width:2;fill:none}.note{font-size:12px;color:var(--muted);padding:0 4px 8px}.cards{display:grid;grid-template-columns:1fr 1fr 1.12fr;gap:14px;margin-top:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.kicker{color:var(--green);font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:7px}.card h2{font-size:18px;margin-bottom:13px}.row{padding:9px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.5}.row b{display:block;font-size:14px;margin-bottom:2px}.row span{color:var(--muted)}.evidence{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;background:#233831;padding:11px;border-radius:6px;margin-top:10px;color:#cdf4e5}.evidence i{font-style:normal;color:var(--green)}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}.step{border-top:3px solid var(--line);padding:12px 6px 2px}.step:first-child{border-color:var(--green)}.step:nth-child(2),.step:nth-child(3){border-color:var(--purple)}.step b{display:block;font-size:14px;margin-bottom:5px}.step p{color:var(--muted);font-size:12px}.num{color:var(--green);margin-right:7px}footer{display:flex;justify-content:space-between;gap:20px;margin-top:19px;padding-top:13px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}a{color:var(--green)}.boundary{color:#d6dfe4} @media(max-width:850px){main{padding:24px 18px}header{display:block}.status{display:inline-block;margin-top:12px;text-align:left}.cards{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.architecture{overflow-x:auto}svg{min-width:950px}.section-title{display:block}.legend{margin-top:8px}footer{display:block}footer p{margin-bottom:8px}}@media print{@page{size:A3 landscape;margin:8mm}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}main{max-width:none;padding:12px}header,.architecture,.cards,.steps,footer{break-inside:avoid}a{color:var(--green)}}
-</style>
-</head>
-<body><main>
-<header><div><div class="eyebrow">LAUGHTALE / LINKY CHAT</div><h1>많이 보내도, 잃지 않도록.</h1><p class="intro">연결·저장·전파를 따로 확장하고, 부하와 장애 속에서도 정확한 결과를 증명합니다.</p></div><div class="status"><strong>설계 검토안 · 구현 / 실측 전</strong>2026.09.07 · 수치와 도구는 승인 전 후보입니다.</div></header>
-
-<section class="architecture" aria-labelledby="flow-title"><div class="section-title"><h2 id="flow-title">메시지 하나가 지나가는 길</h2><div class="legend"><span class="dot green"></span>S1 기준선 <span class="dot purple"></span>S2 분산 확장</div></div>
-<svg viewBox="0 0 1260 244" role="img" aria-label="클라이언트가 HTTP로 메시지를 보내면 Chat API가 PostgreSQL에 저장합니다. S2에서는 같은 트랜잭션의 outbox를 relay가 broker로 발행하고 fanout이 구독 Gateway로 전달합니다. Gateway는 WebSocket으로 본문을 전달하며 누락은 head 비교와 history로 복구합니다.">
-<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#aebfc9"/></marker><marker id="back" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8ee3c1"/></marker></defs>
-<path class="edge" marker-end="url(#arrow)" d="M166 85H211"/><path class="edge" marker-end="url(#arrow)" d="M383 85H428"/><path class="edge" marker-end="url(#arrow)" d="M633 85H678"/><path class="edge" marker-end="url(#arrow)" d="M877 85H922"/><path class="edge" marker-end="url(#arrow)" d="M1082 85H1122"/>
-<rect class="node" x="4" y="47" width="162" height="80" rx="9"/><text class="label" x="85" y="80" text-anchor="middle">클라이언트</text><text class="small" x="85" y="104" text-anchor="middle">전송 키 · 방별 cursor</text>
-<rect class="node" x="213" y="47" width="170" height="80" rx="9"/><text class="label" x="298" y="80" text-anchor="middle">Chat API</text><text class="small" x="298" y="104" text-anchor="middle">권한 · 멱등성 · 순서</text>
-<rect class="node" x="430" y="36" width="203" height="102" rx="9"/><text class="label" x="531" y="67" text-anchor="middle">PostgreSQL</text><text class="small" x="531" y="89" text-anchor="middle">메시지 원본 · 방별 seq</text><rect x="446" y="101" width="172" height="25" rx="4" fill="#353046"/><text x="532" y="118" text-anchor="middle" fill="#d6cafb" font-size="12">S2 + Outbox · 원자적 저장</text>
-<rect class="node later" x="680" y="47" width="197" height="80" rx="9"/><text class="label" x="778" y="80" text-anchor="middle">Relay + Broker</text><text class="small" x="778" y="104" text-anchor="middle">재발행 · Kafka 후보</text>
-<rect class="node later" x="924" y="47" width="158" height="80" rx="9"/><text class="label" x="1003" y="80" text-anchor="middle">Fanout</text><text class="small" x="1003" y="104" text-anchor="middle">구독 Gateway 선택</text>
-<rect class="node" x="1124" y="47" width="132" height="80" rx="9"/><text class="label" x="1190" y="80" text-anchor="middle">Gateway</text><text class="small" x="1190" y="104" text-anchor="middle">연결 · 송신 큐</text>
-<text class="small" x="190" y="32" text-anchor="middle">HTTP</text><text class="caption" x="431" y="20" text-anchor="middle">COMMIT 이후에만 stored ACK</text>
-<path class="return" marker-end="url(#back)" d="M1190 127V179Q1190 190 1179 190H97Q85 190 85 178V130"/>
-<rect x="347" y="177" width="590" height="27" rx="5" fill="#19242e"/><text x="642" y="195" text-anchor="middle" fill="#8ee3c1" font-size="14">WebSocket으로 본문 전달 · 누락은 head 비교 + HTTP history로 복구</text>
-<text class="small" x="630" y="232" text-anchor="middle">S1은 API·Gateway 한 프로세스에서 직접 전달합니다. 그림의 분산 경로는 S2 목표입니다.</text>
-</svg><p class="note">저장 성공 ≠ 브로커 처리 완료 ≠ 상대방 수신 ≠ 읽음입니다. 실시간 본문 수신마다 HTTP 조회를 추가하지 않습니다.</p></section>
-
-<div class="cards">
-<section class="card"><div class="kicker">01 / CORRECTNESS</div><h2>무엇이 틀어지면 안 될까요?</h2><div class="row"><b>같은 전송은 한 번만 저장합니다.</b><span>발신자·방·전송 키의 유일 제약으로 중복 효과를 막습니다.</span></div><div class="row"><b>방 안의 순서를 지킵니다.</b><span>행 잠금과 트랜잭션 카운터로 seq를 정합니다. 클릭 선착순은 아닙니다.</span></div><div class="row"><b>끊겨도 원본에서 복구합니다.</b><span>ACK 유실은 같은 키로 확인하고, 수신 gap은 연속 cursor로 채웁니다.</span></div></section>
-<section class="card"><div class="kicker">02 / SCALE & FAILURE</div><h2>어디가 막히는지 나눕니다.</h2><div class="row"><b>연결 수 / 쓰기율 / 수신자 수</b><span>Gateway·DB·fanout의 병목을 독립적으로 측정합니다.</span></div><div class="row"><b>뜨거운 방 / 느린 수신자</b><span>큐·대기·유입에 상한을 두고 다른 방으로 장애가 번지지 않게 합니다.</span></div><div class="row"><b>서버 종료 / 배포 / 재접속 폭주</b><span>Outbox 재발행, 구독 복원, drain과 history 복구를 시험합니다.</span></div></section>
-<section class="card"><div class="kicker">03 / EVIDENCE</div><h2>트래픽이 아니라 결과로 증명합니다.</h2><div class="row"><b>정상 → 편중 → 폭주 → 복합 장애</b><span>연결과 메시지 도착률을 제어하고 1대·2대의 결과를 비교합니다.</span></div><div class="row"><b>처리량 + 정확성 + 지연 + 자원</b><span>중복·누락·권한, p99, 거절·결과 불명, 큐 적체를 함께 봅니다.</span></div><div class="evidence"><span>발신 의도</span><i>→</i><span>DB 원본</span><i>→</i><span>실제 수신</span></div><p style="font-size:12px;color:var(--muted);margin-top:9px">독립 원장으로 대조하고, 잘못된 결과를 검사기가 잡는지도 확인합니다.</p></section>
-</div>
-
-<section class="steps" aria-label="단계별 검증"><div class="step"><b><span class="num">S1</span>정확성 기준선</b><p>두 사용자 DM · 저장·재시도·복구</p></div><div class="step"><b><span class="num">S2</span>다중 서버 전달</b><p>Outbox · Broker · Fanout · 장애 복구</p></div><div class="step"><b><span class="num">S3</span>부하와 확장 증빙</b><p>증설 비교 · hot 방 · 배포 복합 장애</p></div><div class="step"><b><span class="num">S4</span>제품 범위 확장</b><p>그룹 · 외부 플랫폼 동기화 · 보관 정책</p></div></section>
-<footer><p class="boundary">증명의 단위는 ‘13억 인구’가 아니라 <strong>환경 × 연결 수 × 메시지율 × 방 분포 × 통과 기준</strong>입니다.</p><p>이 페이지는 요약입니다. <a href="linky-chat-internal-dm.md">상세 계약·ERD·검증 기준 보기</a></p></footer>
+*{box-sizing:border-box}body{margin:0;background:#faf9f6;color:#263442;font-family:Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}main{max-width:1480px;margin:auto;padding:20px 30px 12px}header{display:flex;align-items:center;justify-content:space-between}h1{font-size:23px;margin:0}header span,footer{font-size:12px;color:#687480}svg{display:block;width:100%;height:auto}svg text{font-family:inherit;fill:#344451;font-size:15px}.name{font-size:17px;font-weight:600}.muted{fill:#84909b;font-size:12px}.wire{fill:none;stroke:#8a969f;stroke-width:1.7;marker-end:url(#arrow)}.live{stroke:#21977f;marker-end:url(#green)}.event{stroke:#8b6eb1;marker-end:url(#purple)}.observe{stroke:#b4bdc4;stroke-dasharray:4 5;marker-end:url(#arrow)}.region{fill:#fff;stroke:#b4bec6;stroke-width:1.2}.group{fill:#f9fafb;stroke:#bdc8cf;stroke-dasharray:7 5;stroke-width:1.2}footer{display:flex;justify-content:space-between;gap:20px;border-top:1px solid #dce0e3;padding-top:10px}a{color:#298776}@media print{@page{size:A3 landscape;margin:8mm}main{padding:0}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body><main>
+<header><h1>LINKY CHAT <span style="font-size:16px;font-weight:400"> / Server Architecture</span></h1><span>S2–S3 목표 구성 · 설계 후보 / 미구현</span></header>
+<svg viewBox="0 0 1400 845" role="img" aria-label="클라이언트와 부하 생성기가 edge load balancer를 통해 Next.js, Chat API, WebSocket Gateway에 연결합니다. API는 PostgreSQL에 저장하고 outbox relay, broker, fanout을 거쳐 Gateway로 이벤트를 전달합니다. 서버 복제는 수평 확장을 나타내며 DB와 브로커의 실제 배치는 미정입니다.">
+<defs>
+<marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#8a969f"/></marker>
+<marker id="green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#21977f"/></marker>
+<marker id="purple" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#8b6eb1"/></marker>
+<symbol id="server" viewBox="0 0 80 86"><rect x="6" y="4" width="68" height="75" rx="7" fill="currentColor"/><rect x="15" y="16" width="50" height="15" rx="3" fill="#fff" opacity=".92"/><rect x="15" y="38" width="50" height="15" rx="3" fill="#fff" opacity=".92"/><circle cx="21" cy="67" r="3" fill="#fff"/><path d="M33 67H59" stroke="#fff" stroke-width="3"/></symbol>
+<symbol id="computer" viewBox="0 0 100 85"><rect x="4" y="3" width="90" height="58" rx="7" fill="#8e9ba5"/><rect x="11" y="10" width="76" height="42" rx="3" fill="#fff"/><path d="M48 62V74M25 77H73" stroke="#8e9ba5" stroke-width="6"/><rect x="72" y="30" width="26" height="48" rx="4" fill="#5c6e7c"/><rect x="77" y="36" width="16" height="30" rx="2" fill="#fff"/></symbol>
+<symbol id="db" viewBox="0 0 100 105"><path d="M8 23V80C8 106 92 106 92 80V23" fill="#4f84b7"/><ellipse cx="50" cy="23" rx="42" ry="17" fill="#71a5d5"/><path d="M8 49C8 72 92 72 92 49M8 74C8 97 92 97 92 74" stroke="#dbeaf7" fill="none" stroke-width="2"/><ellipse cx="50" cy="23" rx="31" ry="9" fill="#92bddf"/></symbol>
+<symbol id="lb" viewBox="0 0 90 90"><circle cx="45" cy="45" r="41" fill="#dc9047"/><path d="M23 45H42M42 45V24H66M42 45H66M42 45V67H66" stroke="#fff" stroke-width="4" fill="none"/><path d="M60 18L69 24L60 30M60 39L69 45L60 51M60 61L69 67L60 73" stroke="#fff" stroke-width="3" fill="none"/></symbol>
+<symbol id="queue" viewBox="0 0 100 85"><rect x="8" y="9" width="84" height="66" rx="9" fill="#9573b4"/><rect x="21" y="23" width="12" height="37" rx="3" fill="#fff"/><rect x="43" y="23" width="12" height="37" rx="3" fill="#fff"/><rect x="65" y="23" width="12" height="37" rx="3" fill="#fff"/></symbol>
+<symbol id="monitor" viewBox="0 0 100 85"><rect x="5" y="6" width="90" height="62" rx="6" fill="#738693"/><rect x="12" y="13" width="76" height="47" rx="3" fill="#fff"/><path d="M18 47L31 38L42 43L54 24L66 34L80 20" stroke="#329981" stroke-width="4" fill="none"/><path d="M48 69V79M27 81H70" stroke="#738693" stroke-width="5"/></symbol>
+</defs>
+<!-- Deployment boundaries -->
+<rect class="region" x="228" y="183" width="1138" height="619" rx="18"/>
+<text x="248" y="209" class="muted">LAUGHTALE · PRIVATE SERVICE NETWORK</text>
+<rect class="group" x="273" y="308" width="1055" height="244" rx="14"/>
+<text x="294" y="334" class="muted">KUBERNETES · APPLICATION WORKLOADS (목표)</text>
+<rect class="group" x="484" y="586" width="704" height="194" rx="14"/>
+<text x="504" y="612" class="muted">DATA &amp; EVENT SERVICES · 배치 미정</text>
+<!-- Connections behind symbols -->
+<path class="wire" d="M660 115V206"/><text x="678" y="155">HTTPS / WSS</text>
+<path class="wire" d="M148 235H611"/><text x="303" y="253">Load traffic</text>
+<path class="wire" d="M650 285V298H366V363"/>
+<path class="wire" d="M650 285V363"/>
+<path class="wire live" d="M650 285V298H1042V363"/>
+<text x="380" y="290">Web</text><text x="667" y="319">API / History</text><text x="1010" y="282" fill="#21977f">WebSocket</text>
+<path class="wire" d="M684 451H751V560H650V641"/><text x="665" y="577">Read / Write</text>
+<path class="wire event" d="M691 683H803"/><text x="721" y="671" fill="#8b6eb1">Outbox</text>
+<path class="wire event" d="M883 683H992"/>
+<path class="wire event" d="M1083 683H1250V470"/>
+<path class="wire event" d="M1210 422H1108"/><text x="1135" y="408" fill="#8b6eb1">Events</text>
+<path class="wire observe" d="M273 515H154V609"/><text x="164" y="551" class="muted">Metrics / Logs</text>
+<!-- Clients -->
+<use href="#computer" x="610" y="25" width="100" height="85"/><text x="660" y="133" text-anchor="middle" class="name">Clients</text>
+<!-- Load generator -->
+<use href="#server" x="60" y="194" width="80" height="86" style="color:#5b8994"/><text x="100" y="309" text-anchor="middle" class="name">Load Generator</text><text x="100" y="330" text-anchor="middle" class="muted">k6 후보 · 별도 실행</text>
+<!-- Edge -->
+<use href="#lb" x="608" y="204" width="86" height="86"/><text x="731" y="241" class="name">Edge / LB</text><text x="731" y="262" class="muted">Ingress · TLS · 라우팅</text>
+<!-- Replicated workloads -->
+<g style="color:#718aab"><use href="#server" x="318" y="359" width="70" height="78" opacity=".35"/><use href="#server" x="336" y="375" width="70" height="78"/></g>
+<text x="371" y="486" text-anchor="middle" class="name">Next.js Web</text><text x="371" y="508" text-anchor="middle" class="muted">Pods × N</text>
+<g style="color:#db914b"><use href="#server" x="596" y="354" width="76" height="84" opacity=".3"/><use href="#server" x="613" y="369" width="76" height="84" opacity=".65"/><use href="#server" x="630" y="384" width="76" height="84"/></g>
+<text x="650" y="494" text-anchor="middle" class="name">Chat API</text><text x="650" y="516" text-anchor="middle" class="muted">FastAPI 후보 · Pods × N</text>
+<g style="color:#329d87"><use href="#server" x="983" y="354" width="76" height="84" opacity=".3"/><use href="#server" x="1000" y="369" width="76" height="84" opacity=".65"/><use href="#server" x="1017" y="384" width="76" height="84"/></g>
+<text x="1042" y="494" text-anchor="middle" class="name">WS Gateway</text><text x="1042" y="516" text-anchor="middle" class="muted">Connections · Pods × N</text>
+<use href="#server" x="1210" y="378" width="80" height="86" style="color:#9879b5"/>
+<text x="1250" y="494" text-anchor="middle" class="name">Fanout</text><text x="1250" y="516" text-anchor="middle" class="muted">Workers</text>
+<!-- Data plane -->
+<use href="#db" x="600" y="632" width="100" height="105"/>
+<text x="650" y="758" text-anchor="middle" class="name">PostgreSQL Primary</text>
+<text x="650" y="776" text-anchor="middle" class="muted">Messages + Outbox</text>
+<use href="#server" x="803" y="643" width="80" height="86" style="color:#9879b5"/>
+<text x="843" y="758" text-anchor="middle" class="name">Outbox Relay</text>
+<use href="#queue" x="992" y="640" width="100" height="85"/>
+<text x="1042" y="758" text-anchor="middle" class="name">Event Broker</text><text x="1042" y="776" text-anchor="middle" class="muted">Kafka 후보</text>
+<!-- Observability -->
+<use href="#monitor" x="104" y="610" width="100" height="85"/>
+<text x="154" y="724" text-anchor="middle" class="name">Observability</text><text x="154" y="746" text-anchor="middle" class="muted">수집·저장·대시보드 미정</text>
+<!-- Legend -->
+<path d="M267 831H303" stroke="#8a969f" stroke-width="2"/><text x="311" y="835" class="muted">HTTP / DB</text>
+<path d="M442 831H478" stroke="#21977f" stroke-width="2"/><text x="486" y="835" class="muted">WebSocket · 양방향 연결</text>
+<path d="M696 831H732" stroke="#8b6eb1" stroke-width="2"/><text x="740" y="835" class="muted">이벤트 전파</text>
+<path d="M883 831H919" stroke="#b4bdc4" stroke-width="2" stroke-dasharray="4 5"/><text x="927" y="835" class="muted">관측 · 대표 경로만 표시</text>
+</svg>
+<footer><span>복제된 서버 아이콘 = 수평 확장 · S1은 단일 프로세스 기준선 · Replica / Sharding / 외부 플랫폼은 미표시</span><a href="linky-chat-internal-dm.md">상세 설계</a></footer>
 </main></body></html>
