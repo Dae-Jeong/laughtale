@@ -9,7 +9,7 @@ Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. �
 
 ### PostgreSQL 준비 task — 2026-09-08
 
-Status: Primary/Replica 1차 실험 완료 · 앱 트랜잭션 상세 시험은 후속입니다.
+Status: Primary/Replica와 PostgreSQL 서비스 기반 1차 검증 완료 · 채팅 업무 구현은 후속입니다.
 사용자는 공용 DB 재사용 대신 **라프텔 전용 Primary/Replica 두 인스턴스**를 승인했습니다.
 머신 공용 DB 재사용 규칙의 예외는 이 복제 실험에만 적용합니다. 기존 5433/5434 사용안은 대체했으며 공용 DB와 다른 프로젝트 설정을 변경하지 않았습니다.
 
@@ -34,14 +34,31 @@ flowchart LR
     READ[읽기 계정 · 수동 검증] --> R
 ```
 
-Replica는 별도의 테스트 DB가 아닙니다. 같은 데이터를 복제하므로 읽기 분산 계층과 전체 트랜잭션 시험은 다음 절편으로 분리합니다.
+Replica는 별도의 테스트 DB가 아닙니다. 읽기 분산 계층은 후속이며 기반 트랜잭션 시험은 Primary 안의 별도 논리 DB에서 수행했습니다.
 
-다음 task:
-- [ ] 승인된 실험 Primary 안에 별도 테스트 논리 DB/전용 역할을 마련할지 결정하고, 개발 DB를 거절하는 target guard를 구현합니다. Replica를 쓰기 테스트 대상으로 사용하지 않습니다.
-- [ ] 실제 PostgreSQL에서 앱 업무 commit·본문 실패/commit 실패·취소·pool/lock/statement timeout·계측 결과를 집중 검증합니다. 현재 직접 SQL rollback smoke와 앱 연결 확인만으로 대체하지 않습니다.
-- [ ] 잘못된 인증·연결 불가 시 제한된 시간 내 시작 실패와 secret 비노출을 검증합니다. 공유 DB를 중지하지 않습니다.
+기반 검증 절편:
+테스트 DB는 승인된 실험 Primary 5440에 `laughtale_chat_test`, 역할은 `chat_test`로 한정했습니다. 물리 자원은 개발 DB와 공유하므로 기능·실패 시험만 수행하며 성능 격리를 주장하지 않습니다. 기본 시험은 외부 DB 없이, `--postgres`로 명시한 실행만 별도 URL과 실제 대상 확인 후 고유 schema에 접근합니다. 구현 파일은 `tests/postgres_support.py`, `tests/integration/test_postgres.py`, test 선택용 conftest·marker, `infra/postgres/prepare-test.py`에 배치했습니다. 이번 범위에는 메시지 기능 구현을 포함하지 않습니다.
+
+- [x] 별도 테스트 DB/역할과 target guard를 구현했습니다. 개발 DB·Replica·공용 포트와 최적화 실행에서의 guard 우회를 거절합니다.
+- [x] 실제 PostgreSQL에서 합성 업무 commit·본문 실패/commit 실패·취소·pool/lock/statement timeout·계측과 연결 재사용을 검증했습니다. 채팅 업무 검증은 아닙니다.
+- [x] 잘못된 인증·연결 불가 시 제한된 시간 내 시작 실패와 engine 해제를 검증했습니다. 실제 앱 인증 실패 로그의 합성 secret 비노출을 확인했으며 공유 DB는 중지하지 않았습니다.
 - [ ] 메시지 schema·Alembic·업무/API를 별도 절편으로 구현합니다. migration은 chat_owner로 실행하는 명시적 운영 경로를 정의하며 앱에 소유자 권한을 주지 않습니다.
 - [ ] 읽기 Replica 적용은 허용 지연·Primary fallback 부하·오류 정책 합의 후 구현합니다. 현재 앱은 Primary만 사용합니다.
+
+2026-09-08 결과: 기본 67개 통과·PostgreSQL 12개 제외, 명시적 DB 실행은 총 79개 통과했습니다. 환경 URL 누락 시 수집 전에 실패하며 `verify.py`는 `python -O`를 거절합니다. 서비스 실행·검증 명령과 파일 역할은 [서비스 README](../services/chat/README.md)가 소유합니다.
+연결 불가 시험은 이 머신에서 연결 거절 또는 timeout으로 끝날 수 있어 둘 다 실패 계약으로 검사합니다. 최초 긴 pytest traceback에 테스트 계정 비밀번호가 포함되어 해당 비밀번호를 교체했습니다. 실패 주입 URL은 합성 secret으로 변경하고 기본 traceback을 짧게 제한했습니다. 이는 임의 상세 디버그 출력의 비노출 보장이 아닙니다.
+
+#### 1차 이후 함께 검토할 한계
+
+| 주제 | 현재 한계 · 다시 논의할 시점 |
+| --- | --- |
+| 복제 지연·조회 | 비동기 복제이며 앱 읽기 라우팅은 없습니다. Replica 적용 전에 허용 지연·쓰기 직후 조회·fallback 부하를 정합니다. |
+| 장애·데이터 손실 | 같은 VM이며 미복제 commit 유실 가능성이 있습니다. 외부 배포 전에 장애 영역·승격·RPO/RTO·백업 복원을 검증합니다. |
+| WAL·장기 중단 | slot 상한은 디스크 총량 보장이 아닙니다. 복제 중단 시험을 확대할 때 경보·재동기화 절차를 잡습니다. |
+| 건강·관측 | readiness와 recovery health만으로 지속적인 DB/복제 건강을 알 수 없습니다. 통합 모니터링에서 지연·연결·포화 경보를 정합니다. |
+| 업무·권한 | 메시지 schema·migration·동시성·멱등성·WS는 미구현입니다. 다음 절편에서 owner migration 경로와 업무별 오류/재시도를 검증합니다. |
+| 시험·자원 | 논리 DB만 분리했습니다. 대용량 시험 전 자원 격리·부하 모델을 정하며, 강제 종료가 남긴 시험 schema는 식별 후 수동 정리합니다. |
+| 보안·운영 | 로컬 secret·loopback 구성입니다. 외부 배포 전에 TLS·secret 공급/회전 절차를 잡습니다. |
 
 ### 첫 서비스 기반 도입 — 2026-09-08
 
@@ -68,15 +85,15 @@ flowchart LR
 완료 조건은 다음과 같습니다.
 
 - [x] 서비스 독립 설치·빌드와 lint·format·type check가 통과합니다. 명령은 [서비스 README](../services/chat/README.md#검증)에 확정했습니다.
-- [ ] 실제 격리 PostgreSQL에서 commit·rollback·연결 획득 timeout·취소 후 세션 반환을 검증합니다. SQLite 또는 대역만의 통과로 대체하지 않습니다.
-- [ ] 잘못된 DB 설정·연결 실패 시 안전하게 시작 실패하며 로그에 비밀번호가 노출되지 않습니다.
-- [ ] health·HTTP/DB metrics·종료 처리의 기존 공통 회귀 시험을 유지합니다. readiness의 시작 완료와 지속적인 DB 건강 판정은 구분합니다.
+- [x] 실제 격리 PostgreSQL에서 commit·rollback·연결 획득 timeout·취소 후 세션 반환을 검증했습니다.
+- [x] 잘못된 DB 설정·연결 실패 시 시작 실패와 인증 실패 로그의 합성 secret 비노출을 검증했습니다.
+- [x] health·HTTP/DB metrics·종료 처리의 기존 공통 회귀 시험을 유지했습니다. readiness의 시작 완료와 지속적인 DB 건강 판정은 구분합니다.
 - [x] 원본 서브모듈에 변경이 없음을 확인했습니다. 기존 서비스 DB/프로세스에는 작업하지 않았습니다.
 
 2026-09-08 1차 기반 도입: `services/chat/src/chat_service`의 src layout을 사용자 확인으로 유지합니다.
 공통 회귀·서비스 표면·PostgreSQL 설정/engine 조립 시험 58개가 통과했습니다. Ruff·포맷(47개 Python 파일)·ty·wheel/sdist 빌드가 통과했습니다.
 Starlette deprecated alias 경고 1건은 기존 예외로 표시합니다. PostgreSQL engine 조립 시험은 접속하지 않으므로 실제 DB 검증 증거가 아닙니다.
-공통 HTTP 검증에서 인사 endpoint가 필요한 경우 테스트 전용 앱에만 등록합니다. SQLite 기반 DB/예약 시험은 원본에 남기며 PostgreSQL 대응 시험은 아직 미완료입니다.
+공통 HTTP 검증에서 인사 endpoint가 필요한 경우 테스트 전용 앱에만 등록합니다. SQLite 기반 DB/예약 시험은 원본에 남깁니다. 이후 PostgreSQL 기반 검증 결과는 위 절이 소유하며 예약 예제를 이식했다는 뜻은 아닙니다.
 Alembic은 메시지 schema 도입 시 추가합니다. 이 기반 도입 커밋에서는 공유 DB 생성·migration·컨테이너 기동을 수행하지 않았으며, 이후 격리 복제 실험 결과는 위 절이 소유합니다.
 
 테스트 작성 순서는 의무화하지 않습니다. 대규모 부하·공유 데이터 초기화·외부 API 호출은 포함하지 않습니다.

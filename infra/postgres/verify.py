@@ -69,9 +69,11 @@ def verify_target(service: str, port: int) -> None:
             "docker",
             "inspect",
             "--format",
-            '{{index .Config.Labels "com.docker.compose.project"}}|'
-            '{{index .Config.Labels "com.docker.compose.service"}}|'
-            "{{json .NetworkSettings.Ports}}",
+            (
+                '{{index .Config.Labels "com.docker.compose.project"}}|'
+                '{{index .Config.Labels "com.docker.compose.service"}}|'
+                "{{json .NetworkSettings.Ports}}"
+            ),
             f"{PROJECT}-{service}-1",
         ],
         capture_output=True,
@@ -80,10 +82,12 @@ def verify_target(service: str, port: int) -> None:
         timeout=10,
     )
     project, actual_service, ports = result.stdout.strip().split("|", 2)
-    assert project == PROJECT and actual_service == service
-    assert json.loads(ports)["5432/tcp"] == [
+    if project != PROJECT or actual_service != service:
+        raise RuntimeError("Unexpected Compose target")
+    if json.loads(ports)["5432/tcp"] != [
         {"HostIp": "127.0.0.1", "HostPort": str(port)}
-    ]
+    ]:
+        raise RuntimeError("Unexpected lab port binding")
 
 
 async def expected_error(connection, sql: str, sqlstate: str) -> None:
@@ -108,6 +112,8 @@ async def wait_rows(connection, table: str, count: int) -> None:
 
 
 async def run(restart_replica: bool) -> None:
+    if not __debug__:
+        raise RuntimeError("Run verification without Python optimization")
     verify_target("primary", 5440)
     verify_target("replica", 5441)
     assert admin("primary", "SELECT pg_is_in_recovery();") == "f"
@@ -252,6 +258,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         asyncio.run(run(args.restart_replica))
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 -- CLI boundary must redact driver credentials.
         # Never print driver errors containing connection strings or credentials.
         raise SystemExit(f"Replication smoke failed: {type(error).__name__}") from None

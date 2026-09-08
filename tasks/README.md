@@ -10,7 +10,7 @@
 
 ## Active
 
-- [`linky-chat-internal-dm.md`](linky-chat-internal-dm.md) — 공통 기반·[PostgreSQL Primary/Replica 1차 실험](linky-chat-internal-dm.md#postgresql-준비-task--2026-09-08) 완료, 앱 트랜잭션 상세 시험은 후속입니다. 목표 구조·ERD·실시간/복구·부하 검증 설계를 함께 관리합니다.
+- [`linky-chat-internal-dm.md`](linky-chat-internal-dm.md) — 공통 기반·[PostgreSQL Primary/Replica와 서비스 기반 1차 검증](linky-chat-internal-dm.md#postgresql-준비-task--2026-09-08) 완료, 채팅 업무 구현은 후속입니다. 목표 구조·ERD·실시간/복구·부하 검증 설계와 다음에 검토할 한계를 함께 관리합니다.
 - [`k3s-bootstrap.md`](k3s-bootstrap.md) — 로컬 K3s, Traefik, Next.js 최소 실행 경로
 - [`criteria-governance.md`](criteria-governance.md) — 대화에서 실행 가능한 기준·검증·SoT까지의 연결 구조
 

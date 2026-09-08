@@ -30,7 +30,8 @@ select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib --strict-config --strict-markers"
+addopts = "--import-mode=importlib --strict-config --strict-markers --tb=short"
+markers = ["postgres: explicit isolated PostgreSQL integration tests"]
 filterwarnings = [
     "error",
     # Starlette 1.6.0의 별칭 참조: 수정 릴리스 도입 후 제거합니다. 경고는 표시합니다.
