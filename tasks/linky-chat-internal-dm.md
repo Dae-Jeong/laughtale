@@ -7,6 +7,42 @@ Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. �
 
 ## 전체 설계 요약
 
+### PostgreSQL 준비 task — 2026-09-08
+
+Status: Primary/Replica 1차 실험 완료 · 앱 트랜잭션 상세 시험은 후속입니다.
+사용자는 공용 DB 재사용 대신 **라프텔 전용 Primary/Replica 두 인스턴스**를 승인했습니다.
+머신 공용 DB 재사용 규칙의 예외는 이 복제 실험에만 적용합니다. 기존 5433/5434 사용안은 대체했으며 공용 DB와 다른 프로젝트 설정을 변경하지 않았습니다.
+
+실행·권한·복제 구성과 중지 절차는 [PostgreSQL 실험 환경](../infra/postgres/README.md)이 소유합니다.
+현재는 K8s 밖의 단일 Docker VM 안에서 비동기 물리 스트리밍 복제를 검증한 상태입니다. 자동 승격·장애 영역 분리·백업 복원·TLS·샤딩·부하 시험을 완료했다는 뜻이 아닙니다.
+
+| 절편 | 완료 조건 | 결과 |
+| --- | --- | --- |
+| PG-R1 구성 | 별도 Compose·volume·loopback 포트·자원 상한 | 5440 Primary / 5441 Replica, 각 256MiB·CPU 0.5개로 기동했습니다. |
+| PG-R2 권한 | 소유자·쓰기·읽기·복제 계정 구분 | 앱 계정은 비-superuser이며 reader 쓰기/DDL과 writer DDL을 거절했습니다. |
+| PG-R3 복제 | 데이터 반영·역할 구분·재시작 복구 | 동일 system identifier, streaming:async, Replica에 writer로 쓰기 거절, Replica 중지 중 Primary 쓰기 후 재기동·따라잡기를 확인했습니다. |
+| PG-R4 앱 연결 | 실제 Primary로 앱 준비·종료·Session DI | chat_writer로 실제 DB·현재 사용자·Primary 상태를 확인하고 lifespan 종료 후 engine 참조 제거를 확인했습니다. |
+
+검증 명령: 저장소 루트에서 `uv tool run --from uv==0.12.10 uv run --project services/chat --locked python infra/postgres/verify.py --restart-replica`.
+현재 실행의 고유 probe 테이블만 생성·삭제합니다. 재시작 옵션은 이 실험 Replica만 중지합니다.
+초기 검증은 설치된 Compose의 `start --wait` 미지원으로 실패했고, 지원되는 `up --no-deps --no-recreate --wait`로 바꾼 후 재검증했습니다. 데이터를 재생성하지 않았습니다.
+
+```mermaid
+flowchart LR
+    APP[chat · 쓰기와 최신 조회] --> P[(Primary · 5440)]
+    P -->|비동기 WAL| R[(Replica · 5441)]
+    READ[읽기 계정 · 수동 검증] --> R
+```
+
+Replica는 별도의 테스트 DB가 아닙니다. 같은 데이터를 복제하므로 읽기 분산 계층과 전체 트랜잭션 시험은 다음 절편으로 분리합니다.
+
+다음 task:
+- [ ] 승인된 실험 Primary 안에 별도 테스트 논리 DB/전용 역할을 마련할지 결정하고, 개발 DB를 거절하는 target guard를 구현합니다. Replica를 쓰기 테스트 대상으로 사용하지 않습니다.
+- [ ] 실제 PostgreSQL에서 앱 업무 commit·본문 실패/commit 실패·취소·pool/lock/statement timeout·계측 결과를 집중 검증합니다. 현재 직접 SQL rollback smoke와 앱 연결 확인만으로 대체하지 않습니다.
+- [ ] 잘못된 인증·연결 불가 시 제한된 시간 내 시작 실패와 secret 비노출을 검증합니다. 공유 DB를 중지하지 않습니다.
+- [ ] 메시지 schema·Alembic·업무/API를 별도 절편으로 구현합니다. migration은 chat_owner로 실행하는 명시적 운영 경로를 정의하며 앱에 소유자 권한을 주지 않습니다.
+- [ ] 읽기 Replica 적용은 허용 지연·Primary fallback 부하·오류 정책 합의 후 구현합니다. 현재 앱은 Primary만 사용합니다.
+
 ### 첫 서비스 기반 도입 — 2026-09-08
 
 사용자는 첫 서비스를 템플릿에서 가져오고 SQLite를 PostgreSQL로 전환하는 방향을 승인했습니다.
@@ -17,7 +53,7 @@ Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. �
 - 가져올 기반: 앱 조립·명시적 DI·설정·lifespan·공통 오류 응답·로그·HTTP/DB metrics·빌드·검증 설정입니다.
 - 인사·상품 예약·seed·예약 migration은 채팅 업무가 아니므로 서비스 기능으로 가져오지 않습니다. 공통 기반 시험은 유지·적응하며 예제 전용 시험은 원본에서 계속 관리합니다.
 - PostgreSQL 전환은 URL 변경만이 아닙니다. SQLite PRAGMA·BEGIN IMMEDIATE·busy timeout·오류 분류를 제거하고 PostgreSQL용 비동기 드라이버·트랜잭션·연결/잠금/문장 timeout을 검토합니다. 드라이버는 구현 전 공식 문서로 확인하며 패키지 도구로 추가·고정합니다.
-- DB는 새 인스턴스 없이 기존 공유 서비스용 5433, 테스트용 5434 내부에 각각 `laughtale_chat` 논리 DB를 쓰는 안입니다. 실제 인스턴스·DB 존재·권한을 읽기 전용 확인하고, 기존 동명 DB에 임의 migration·삭제를 하지 않습니다. 생성 범위는 사용자 확인 후 적용합니다.
+- DB 준비는 후속 사용자 승인으로 격리된 Primary 5440 / Replica 5441 실험으로 변경했습니다. 구성·검증 상태는 위 PostgreSQL task를 따르며 Replica는 별도 테스트 DB로 간주하지 않습니다.
 - 이번에는 health·관측·DB 수명 기반까지만 만듭니다. 메시지 ERD/API·WebSocket·인증·Kafka·K8s 배포는 후속 절편입니다. psql은 CLI이며 앱 DB는 PostgreSQL입니다.
 
 ```mermaid
@@ -41,7 +77,7 @@ flowchart LR
 공통 회귀·서비스 표면·PostgreSQL 설정/engine 조립 시험 58개가 통과했습니다. Ruff·포맷(47개 Python 파일)·ty·wheel/sdist 빌드가 통과했습니다.
 Starlette deprecated alias 경고 1건은 기존 예외로 표시합니다. PostgreSQL engine 조립 시험은 접속하지 않으므로 실제 DB 검증 증거가 아닙니다.
 공통 HTTP 검증에서 인사 endpoint가 필요한 경우 테스트 전용 앱에만 등록합니다. SQLite 기반 DB/예약 시험은 원본에 남기며 PostgreSQL 대응 시험은 아직 미완료입니다.
-Alembic은 메시지 schema 도입 시 추가합니다. 공유 DB 생성·migration·컨테이너 기동은 수행하지 않았습니다.
+Alembic은 메시지 schema 도입 시 추가합니다. 이 기반 도입 커밋에서는 공유 DB 생성·migration·컨테이너 기동을 수행하지 않았으며, 이후 격리 복제 실험 결과는 위 절이 소유합니다.
 
 테스트 작성 순서는 의무화하지 않습니다. 대규모 부하·공유 데이터 초기화·외부 API 호출은 포함하지 않습니다.
 

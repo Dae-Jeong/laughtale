@@ -1,0 +1,80 @@
+name: laughtale-postgres-lab
+
+x-postgres: &postgres
+  image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+  cpus: 0.5
+  mem_limit: 256m
+  shm_size: 64m
+  stop_grace_period: 30s
+  restart: "no"
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "2"
+
+services:
+  primary:
+    <<: *postgres
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set local .env}
+      POSTGRES_DB: laughtale_chat
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      CHAT_WRITER_PASSWORD: ${CHAT_WRITER_PASSWORD:?Set local .env}
+      CHAT_READER_PASSWORD: ${CHAT_READER_PASSWORD:?Set local .env}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:?Set local .env}
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/10-chat.sql:ro
+      - ./pg_hba.conf:/etc/postgresql/lab_hba.conf:ro
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/lab_hba.conf
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=4
+      - -c
+      - max_replication_slots=2
+      - -c
+      - max_slot_wal_keep_size=256MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - wal_keep_size=64MB
+    healthcheck:
+      test: [CMD-SHELL, "psql -U postgres -d laughtale_chat -Atqc \"SELECT 1 FROM pg_replication_slots WHERE slot_name='chat_replica'\" | grep -qx 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  replica:
+    <<: *postgres
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      PGPASSWORD: ${REPLICATION_PASSWORD:?Set local .env}
+    ports:
+      - "127.0.0.1:5441:5432"
+    depends_on:
+      primary:
+        condition: service_healthy
+    volumes:
+      - replica-data:/var/lib/postgresql/data
+      - ./replica.sh:/opt/lab/replica.sh:ro
+      - ./pg_hba.conf:/etc/postgresql/lab_hba.conf:ro
+    entrypoint: [sh, /opt/lab/replica.sh]
+    healthcheck:
+      test: [CMD-SHELL, "psql -U postgres -d laughtale_chat -Atqc 'SELECT pg_is_in_recovery()' | grep -qx t"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  primary-data:
+  replica-data:

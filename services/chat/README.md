@@ -48,7 +48,9 @@ SQLite URL은 거절하며 PRAGMA·BEGIN IMMEDIATE를 사용하지 않습니다.
 연결 timeout·pool 획득 timeout·서버 statement/lock timeout은 별도 설정입니다. 값은 초기 개발 기본값이며 성능 검증된 운영 예산이 아닙니다.
 URL query 옵션은 현재 거절합니다. TLS·운영 연결 정책은 외부 배포 전에 별도로 설계합니다.
 
-새 DB 컨테이너·공유 DB·테이블을 생성하지 않습니다. 서비스용 5433 및 테스트용 5434의 `laughtale_chat` 논리 DB는 실제 대상 확인·생성 승인 후 준비합니다.
+사용자가 승인한 [격리 Primary/Replica 실험 환경](../../infra/postgres/README.md)을 사용합니다. Primary는 loopback 5440, Replica는 5441이며 DB는 둘 다 `laughtale_chat`입니다. 공용 DB는 변경하지 않았습니다.
+이 머신의 Git 제외 `.env`에는 Primary의 `chat_writer` URL을 설정했습니다. 다른 checkout에서는 실험 환경의 로컬 비밀번호로 설정합니다. 앱의 읽기 Replica 연결·자동 라우팅은 아직 없습니다.
+2026-09-08 실제 Primary에서 앱 lifespan·Session DI 연결/반환을 확인했습니다. Replica는 별도 테스트 DB가 아니며 앱 트랜잭션 통합 시험용 데이터 격리는 후속입니다.
 메시지 schema와 Alembic migration은 후속입니다. 실제 PostgreSQL의 commit·rollback·잠금·취소 검증 전에는 DB 전환 검증 완료로 보지 않습니다.
 DB 오류의 업무별 재시도·공개 응답 매핑도 메시지 트랜잭션 도입 시 검증합니다. 임의 자동 재시도는 없습니다.
 
