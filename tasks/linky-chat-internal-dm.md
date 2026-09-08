@@ -7,6 +7,44 @@ Approval: 대용량·정확성·실측 검증의 방향은 합의했습니다. �
 
 ## 전체 설계 요약
 
+### 첫 서비스 기반 도입 — 2026-09-08
+
+사용자는 첫 서비스를 템플릿에서 가져오고 SQLite를 PostgreSQL로 전환하는 방향을 승인했습니다.
+아래는 실행 범위 확인안입니다. 채팅 전체 S1과 공유 DB 변경까지 승인된 것으로 확대하지 않습니다.
+
+- 서비스 이름은 `chat`, 경로는 `services/chat/`, Python 패키지는 `chat_service`로 정합니다. 사용자가 서비스 이름에서 Linky를 제외하도록 요청했습니다. Linky는 기존 제품 기획의 참고 맥락일 뿐 서비스·패키지·DB 식별자에 넣지 않습니다.
+- 출처: `external/backend-template`의 고정 커밋 `dd2d3e7`입니다. 원본은 수정하지 않으며 복사 이후 서비스 코드와 변경 책임은 Laughtale이 소유합니다.
+- 가져올 기반: 앱 조립·명시적 DI·설정·lifespan·공통 오류 응답·로그·HTTP/DB metrics·빌드·검증 설정입니다.
+- 인사·상품 예약·seed·예약 migration은 채팅 업무가 아니므로 서비스 기능으로 가져오지 않습니다. 공통 기반 시험은 유지·적응하며 예제 전용 시험은 원본에서 계속 관리합니다.
+- PostgreSQL 전환은 URL 변경만이 아닙니다. SQLite PRAGMA·BEGIN IMMEDIATE·busy timeout·오류 분류를 제거하고 PostgreSQL용 비동기 드라이버·트랜잭션·연결/잠금/문장 timeout을 검토합니다. 드라이버는 구현 전 공식 문서로 확인하며 패키지 도구로 추가·고정합니다.
+- DB는 새 인스턴스 없이 기존 공유 서비스용 5433, 테스트용 5434 내부에 각각 `laughtale_chat` 논리 DB를 쓰는 안입니다. 실제 인스턴스·DB 존재·권한을 읽기 전용 확인하고, 기존 동명 DB에 임의 migration·삭제를 하지 않습니다. 생성 범위는 사용자 확인 후 적용합니다.
+- 이번에는 health·관측·DB 수명 기반까지만 만듭니다. 메시지 ERD/API·WebSocket·인증·Kafka·K8s 배포는 후속 절편입니다. psql은 CLI이며 앱 DB는 PostgreSQL입니다.
+
+```mermaid
+flowchart LR
+    T[고정 FastAPI 템플릿] --> S[services/chat]
+    S --> A[DI · HTTP · 로그 · 계측]
+    A --> P[(PostgreSQL · 서비스 DB)]
+    X[격리 통합 테스트] --> Q[(PostgreSQL · 테스트 DB)]
+```
+
+실행 순서는 공통 기반 복사와 패키지 재명명 → PostgreSQL 설정·자원 수명 전환 → 격리 DB 시험 → 실행 안내와 도입 출처 기록입니다.
+완료 조건은 다음과 같습니다.
+
+- [x] 서비스 독립 설치·빌드와 lint·format·type check가 통과합니다. 명령은 [서비스 README](../services/chat/README.md#검증)에 확정했습니다.
+- [ ] 실제 격리 PostgreSQL에서 commit·rollback·연결 획득 timeout·취소 후 세션 반환을 검증합니다. SQLite 또는 대역만의 통과로 대체하지 않습니다.
+- [ ] 잘못된 DB 설정·연결 실패 시 안전하게 시작 실패하며 로그에 비밀번호가 노출되지 않습니다.
+- [ ] health·HTTP/DB metrics·종료 처리의 기존 공통 회귀 시험을 유지합니다. readiness의 시작 완료와 지속적인 DB 건강 판정은 구분합니다.
+- [x] 원본 서브모듈에 변경이 없음을 확인했습니다. 기존 서비스 DB/프로세스에는 작업하지 않았습니다.
+
+2026-09-08 1차 기반 도입: `services/chat/src/chat_service`의 src layout을 사용자 확인으로 유지합니다.
+공통 회귀·서비스 표면·PostgreSQL 설정/engine 조립 시험 58개가 통과했습니다. Ruff·포맷(47개 Python 파일)·ty·wheel/sdist 빌드가 통과했습니다.
+Starlette deprecated alias 경고 1건은 기존 예외로 표시합니다. PostgreSQL engine 조립 시험은 접속하지 않으므로 실제 DB 검증 증거가 아닙니다.
+공통 HTTP 검증에서 인사 endpoint가 필요한 경우 테스트 전용 앱에만 등록합니다. SQLite 기반 DB/예약 시험은 원본에 남기며 PostgreSQL 대응 시험은 아직 미완료입니다.
+Alembic은 메시지 schema 도입 시 추가합니다. 공유 DB 생성·migration·컨테이너 기동은 수행하지 않았습니다.
+
+테스트 작성 순서는 의무화하지 않습니다. 대규모 부하·공유 데이터 초기화·외부 API 호출은 포함하지 않습니다.
+
 [한 장 시각화 — HTML](linky-chat-overview.html)에서 전체 흐름·보장·확장·증빙을 함께 볼 수 있습니다. 이 문서가 상세 계약의 기준입니다.
 
 [실제 동작 순서 — 전송·동시성·복구·확장](#동작-흐름)에서 메시지 하나가 이동하는 과정을 볼 수 있습니다.

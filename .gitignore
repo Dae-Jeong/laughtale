@@ -8,6 +8,11 @@ node_modules/
 dist/
 build/
 coverage/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
 
 # Tool caches
 .cache/

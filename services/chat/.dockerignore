@@ -1,0 +1,19 @@
+# 빌드에 필요한 파일만 전달합니다. 로컬 env·cache·tests·dist는 제외합니다.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!alembic.ini
+!scripts/
+!scripts/start.sh
+!migrations/
+!migrations/**
+migrations/**/__pycache__/
+migrations/**/*.pyc
+!src/
+!src/**
+src/**/__pycache__/
+src/**/*.pyc
+src/**/.env*
