@@ -122,8 +122,17 @@ flowchart TB
 
 ## 공통 기준 버전과 변경
 
-초기 채택 버전은 `7f306c5a1a0cec5d38d709a4b958bdcab8a20da3`입니다. 실제 적용 버전은 Git의
-`external/backend-template` gitlink가 기준이며 `git submodule status`로 확인합니다. 이 버전은 설계만 제공하며 구현 완료를 뜻하지 않습니다.
+현재 채택 버전은 `dd2d3e7cf7cd7f8ee8a264a181fcce5823ed95ae`입니다(2026-09-08).
+실제 적용 버전은 Git의 `external/backend-template` gitlink가 기준이며 `git submodule status`로 확인합니다.
+설계 전용 초기 버전에서 FastAPI 설정·DI·로그·계측과 SQLite 예약·동시성·멱등성 예제를 제공하는 버전으로 갱신했습니다.
+
+소비 경로 `external/backend-template/python/fastapi`에서 고정된 uv 0.12.10과 lock으로 의존성을 설치하고,
+Ruff 검사·포맷 검사(65개 파일)·ty·pytest(95개 통과)·wheel/sdist 빌드를 재검증했습니다.
+Starlette의 `BlockingPortal` deprecated alias 경고 1건은 원본에 명시된 허용 경고이며 그대로 표시됩니다.
+검증 명령은 [구현 사용 안내](../external/backend-template/python/fastapi/README.md#빌드와-검증)가 소유합니다.
+컨테이너·모니터링 기동, 공유 DB 변경, 서비스 코드 복사와 skill 설치는 이번 갱신에 포함하지 않았습니다.
+PostgreSQL·채팅·인증·WebSocket·운영 부하 검증은 별도이며 SQLite 예제의 통과로 대체하지 않습니다.
+작성 중인 상위 저장소 가이드는 포함하지 않았으며 커밋 후 별도 채택합니다.
 
 - 문서가 없으면 [README의 초기화 명령](../README.md#저장소-준비와-문서)을 실행합니다. 형제 디렉터리나 원격 main으로 대체하지 않습니다.
 - 공통 변경은 Backend Template에서 리뷰한 뒤 채택할 커밋의 차이·서비스 영향·검증을 확인하고 gitlink를 별도로 갱신합니다. 기본 절차에 `update --remote`를 사용하지 않습니다.
